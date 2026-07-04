@@ -101,6 +101,9 @@ def build_authorize_url(state: str) -> str:
         "redirect_uri": _redirect_uri(),
         "scope": _scopes(),
         "state": state,
+        # Force Xero to re-show the consent screen. Without this, Xero silently reuses a
+        # prior approval and never grants newly-added scopes (e.g. accounting.invoices).
+        "prompt": "consent",
     }
     return AUTHORIZE_URL + "?" + urllib.parse.urlencode(params)
 
