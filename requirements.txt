@@ -3,3 +3,5 @@ pytest>=8.0         # split-engine tests
 flask>=3.0          # OAuth callback server + confirm/dashboard UI shell
 requests>=2.31      # Xero API calls (no Xero MCP connected this session)
 python-dotenv>=1.0  # load .env
+pdfplumber>=0.11    # extract text from the subcontract PDF locally (text -> LLM)
+google-genai>=1.0   # Gemini extraction (EXTRACT_PROVIDER=gemini)
