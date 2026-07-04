@@ -116,6 +116,21 @@ Precondition: `labour + materials == total`. Any penny residue goes onto the
 Adversarial fixture (must pass): **total £1,234.56, 71.3 % labour, 5 % retention**,
 asserting all three.
 
+**Half-penny tie-break — RESOLVED (accountant-CONFIRMED, "Option B").** On an exact
+half-penny tie the retention line rounds **DOWN**, leaving the extra penny on pay-now
+labour → **`ROUND_HALF_DOWN`** on the retention lines (NOT `ROUND_DOWN`, which would
+truncate every line). Legal framing to use with judges: neither split is an
+"under-deduction" (s.61 attaches *per payment*; Xero computes the correct deduction on
+whichever split, so no reg 13 SI 2005/2045 exposure either way) — this choice is a
+deliberate *reasonable-care artefact* (reg 9 Condition A evidence). Effect is
+**"never less, occasionally 1p more"** CIS now (monotonic — do NOT say "always more";
+the flagship example ties to the same figure). Over-withholding costs the contractor
+nothing: the penny is the sub's tax under **s.62** (company offsets vs PAYE/NIC, sole
+trader via Self Assessment). Property is **per-payment, not lifetime** (a later rate
+rise can flip cumulative by 1p — still zero exposure). **The load-bearing invariant is
+reconciliation (2) — labour across both bills == original labour** — materials
+mis-attribution, not the tie, is the real CIS exposure; lead with (2) in front of judges.
+
 ---
 
 ## Build order & priorities (if time runs short, stop after each is solid)

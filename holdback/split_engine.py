@@ -44,47 +44,87 @@ How we guarantee all three exactly despite rounding:
       lands on the PAY-NOW LABOUR line.
 
 Why push the residue onto pay-now labour specifically? Because CIS is deducted
-from labour paid NOW. Letting pay-now labour absorb the penny means, in the
-worst case, we deduct one extra penny of CIS now rather than one penny too few.
-Over-deducting is the safe direction; under-deducting under-collects tax. (See
-the OPEN QUESTION below on the sub-penny rounding *direction* of ret_labour.)
+from labour paid NOW. Letting pay-now labour absorb the penny means, on an exact
+tie, we withhold one extra penny of CIS base now rather than one too few — the
+safe direction (see the RESOLVED TIE-BREAK note below).
+
+NB — keep the half-penny in perspective. The tie-break is the SMALL exposure. The
+load-bearing constraint is reconciliation (2): labour across both bills == original
+labour. Overstating materials (i.e. understating labour) on either bill is what
+would create a real CIS under-deduction, and CIS340 puts that checking burden on
+the contractor. Invariant (2), not the rounding tie, is the thing HMRC would care
+about — lead with it.
 
 PRECONDITION: labour + materials must equal total (to the penny). The three
 reconciliations are only mutually satisfiable when the input is internally
 consistent, so we refuse inconsistent input loudly rather than silently fudging
 a figure the user would then have to reverse-engineer.
 
->>> OPEN QUESTION FOR THE ACCOUNTANT / XERO MENTOR (do not silently assume) <<<
-When retention% * labour lands exactly on a half-penny (e.g. £0.025), which way
-should ret_labour round? This code uses ROUND_HALF_UP on the retention lines
-(the conventional default). That rounds the *retention* labour UP on a tie,
-which leaves slightly LESS on pay-now labour = slightly LESS CIS now. The
-addendum's stated safe direction is the opposite (prefer MORE CIS now). If the
-user's ground-truth fixtures show retention lines rounded DOWN on ties, switch
-`_RETENTION_ROUNDING` to ROUND_DOWN and re-run — do NOT edit the fixtures.
+>>> RESOLVED TIE-BREAK — reviewed by the accountant contact, Option B, CONFIRMED <<<
+When retention% * labour lands EXACTLY on a half-penny (e.g. £0.015), ret_labour
+rounds DOWN, so the pay-now labour line (the CIS base paid now) keeps the extra
+penny. Implemented as ROUND_HALF_DOWN on the retention lines only.
+
+  IMPORTANT: this is ROUND_HALF_DOWN, NOT ROUND_DOWN. HALF_DOWN changes ONLY exact
+  ties; non-tie amounts still round to nearest. ROUND_DOWN would truncate every
+  line and understate retention by up to a penny on all of them — a different,
+  more aggressive behaviour that would NOT read as reasonable care.
+
+Why this direction (precise framing — do not overstate it):
+  * FA 2004 s.61 attaches the deduction duty PER PAYMENT, on the non-materials
+    element. Whichever way we split, Xero computes the statutorily correct
+    deduction on that payment, so NEITHER option is an "under-deduction" and HMRC
+    cannot raise a reg 13 (SI 2005/2045) determination against either. The
+    tie-break is a derived posture choice, not compliance vs breach.
+  * We still err toward the only direction the regime punishes (under-collection),
+    and — more valuable — we create a documented, deliberate policy artefact:
+    exactly the "reasonable care" evidence for a reg 9 Condition A direction (which
+    relieves a contractor of under-deduction liability). Rounding the other way is
+    the opposite kind of evidence.
+  * Effect size is WEAKLY-more, never "always more": +1p of pay-now labour base
+    raises the pre-Xero-rounding deduction by only 0.2p (20%) / 0.3p (30%), so after
+    Xero rounds it is frequently IDENTICAL. Correct claim: "never less, occasionally
+    1p more" (monotonic). Do NOT say "always more" — the flagship example ties.
+  * Over-withholding costs the contractor nothing with HMRC: the penny goes to HMRC
+    and is treated as tax paid by the subcontractor (FA 2004 s.62) — a company
+    offsets it against monthly PAYE/NIC, a sole trader recovers via Self Assessment.
+    It is NOT a "commercial" clawback against the contractor.
+  * Property is PER-PAYMENT, not lifetime-invariant: if the sub's rate rises
+    (20%->30%) before release, the retained penny was taxed earlier at the lower
+    rate, so cumulative withholding can end 1p BELOW the other option. Still zero
+    exposure (each payment correctly taxed at its own date) — but don't claim
+    lifetime over-withholding.
+
+If ground-truth fixtures ever contradict this, STOP and show the delta — never
+edit a fixture.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN
 
-# Central rounding knob for the retention lines. See the OPEN QUESTION above:
-# this is the one number to change if the fixtures disagree on half-penny ties.
-_RETENTION_ROUNDING = ROUND_HALF_UP
+# Rounding mode for the RETENTION lines. ROUND_HALF_DOWN = round to nearest, but on
+# an exact half-penny tie round DOWN, leaving the extra penny on pay-now labour
+# (over-withholding — Option B, accountant-CONFIRMED; see RESOLVED TIE-BREAK above).
+# NOT ROUND_DOWN: that would truncate every line, not just ties.
+_RETENTION_ROUNDING = ROUND_HALF_DOWN
 
 _CENT = Decimal("0.01")
 
 
 def _money(value) -> Decimal:
-    """Coerce an int/str/float/Decimal to a 2dp Decimal.
+    """Coerce an int/str/float/Decimal to a 2dp Decimal (standard nearest rounding).
 
     We route floats through str() so that e.g. 1234.56 becomes Decimal('1234.56')
     and NOT Decimal('1234.5599999...'); binary-float noise has no place in money.
+    Input coercion uses plain nearest (HALF_UP) — the deliberate tie-break bias
+    (_RETENTION_ROUNDING) applies only to the computed retention lines, never to
+    the amounts the user typed in.
     """
     if not isinstance(value, Decimal):
         value = Decimal(str(value))
-    return value.quantize(_CENT, rounding=_RETENTION_ROUNDING)
+    return value.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
