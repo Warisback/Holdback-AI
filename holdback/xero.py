@@ -188,6 +188,16 @@ def get_contacts() -> dict:
     return api_get("Contacts")
 
 
+def get_accounts() -> dict:
+    """Chart of accounts — used to find the CIS Labour Expense + materials account codes."""
+    return api_get("Accounts")
+
+
+def get_tax_rates() -> dict:
+    """Tax rates — used to find the exact 20% VAT-on-expenses TaxType for bill lines."""
+    return api_get("TaxRates")
+
+
 def get_contact_cis_settings(contact_id: str) -> dict:
     """LIVE read of a contact's CIS settings (never cached). Returns the raw JSON so we
     can echo the exact field names before relying on them (CLAUDE.md API-specifics)."""

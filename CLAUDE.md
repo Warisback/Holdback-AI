@@ -95,8 +95,9 @@ compaction). Where the base brief and the addendum conflict, **the addendum wins
   tokens expire ~30 min; build is ~13 h). **Granular scopes ONLY** — the app was created
   after 2 Mar 2026, so broad scopes (`accounting.transactions`, etc.) are UNAVAILABLE and
   requesting one breaks consent. Reads use `accounting.settings.read` (Organisation, tax
-  rates) + `accounting.contacts.read` (Contacts, CISSettings). Writes (ACCPAY bills) need
-  the bill scope — **likely `accounting.bills`; confirm the exact ACCPAY write scope**.
+  rates) + `accounting.contacts.read` (Contacts, CISSettings). Writes (ACCPAY bills) use
+  **`accounting.invoices`** (CONFIRMED — the Invoices endpoint serves ACCPAY); add it at
+  the write milestone (triggers re-consent), and validate it permits ACCPAY on first write.
 - `LineAmountTypes="Exclusive"`; **one fixed `TaxType` on every line** — the demo org's
   standard **20 % VAT-on-expenses** code (**confirm its exact name in the org first**).
   Domestic reverse charge is **deliberately out of scope**.

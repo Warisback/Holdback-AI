@@ -115,7 +115,22 @@ def test_out_of_range_retention_pct_is_rejected(bad_pct):
 #                 "ret_labour": 150.00, "ret_materials": 100.00}},
 #
 # Leave empty for now; the test below skips until you supply numbers.
-GROUND_TRUTH_FIXTURES: list[dict] = []
+GROUND_TRUTH_FIXTURES: list[dict] = [
+    # Candidate 1 — clean, no rounding.
+    {"total": "1500.00", "labour": "1000.00", "materials": "500.00", "retention_pct": 5,
+     "expected": {"pay_labour": "950.00", "pay_materials": "475.00",
+                  "ret_labour": "50.00", "ret_materials": "25.00"}},
+    # Candidate 2 — materials round up (17.716 -> 17.72), labour round down (44.012 -> 44.01);
+    # neither is an exact tie.
+    {"total": "1234.56", "labour": "880.24", "materials": "354.32", "retention_pct": 5,
+     "expected": {"pay_labour": "836.23", "pay_materials": "336.60",
+                  "ret_labour": "44.01", "ret_materials": "17.72"}},
+    # Candidate 3 — the tie-break: 100.10*5% = 5.005 (tie) and 50.30*5% = 2.515 (tie).
+    # ROUND_HALF_DOWN sends both DOWN (5.00, 2.51), so pay-now labour keeps the pennies.
+    {"total": "150.40", "labour": "100.10", "materials": "50.30", "retention_pct": 5,
+     "expected": {"pay_labour": "95.10", "pay_materials": "47.79",
+                  "ret_labour": "5.00", "ret_materials": "2.51"}},
+]
 
 
 @pytest.mark.parametrize("fx", GROUND_TRUTH_FIXTURES)

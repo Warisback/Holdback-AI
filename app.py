@@ -18,7 +18,9 @@ import secrets
 from dotenv import load_dotenv
 from flask import Flask, redirect, request, session, url_for
 
-load_dotenv()  # populate os.environ from .env BEFORE importing the Xero client
+load_dotenv(override=True)  # populate os.environ from .env BEFORE importing the Xero client
+# NOTE: .env is read ONCE here at startup. Flask's reloader only watches .py files, so
+# after editing .env you must fully STOP and re-run this process for changes to apply.
 
 from holdback import xero  # noqa: E402
 
@@ -83,6 +85,44 @@ def cis(contact_id):
     return f"<h1>CISSettings</h1><pre>{json.dumps(data, indent=2)}</pre>"
 
 
+@app.route("/accounts")
+def accounts():
+    """Find the CIS Labour Expense + materials account codes to use on bill lines."""
+    rows = "".join(
+        f"<tr><td><code>{a.get('Code')}</code></td><td>{a.get('Name')}</td>"
+        f"<td>{a.get('Type')}</td><td>{a.get('TaxType')}</td></tr>"
+        for a in xero.get_accounts().get("Accounts", [])
+    )
+    return (
+        "<h1>Accounts</h1><table border=1 cellpadding=4>"
+        "<tr><th>Code</th><th>Name</th><th>Type</th><th>TaxType</th></tr>"
+        f"{rows}</table>"
+    )
+
+
+@app.route("/taxrates")
+def taxrates():
+    """Find the exact 20% VAT-on-expenses TaxType string for bill lines."""
+    rows = "".join(
+        f"<tr><td>{t.get('Name')}</td><td><code>{t.get('TaxType')}</code></td>"
+        f"<td>{t.get('EffectiveRate')}</td><td>{t.get('Status')}</td></tr>"
+        for t in xero.get_tax_rates().get("TaxRates", [])
+    )
+    return (
+        "<h1>Tax rates</h1><table border=1 cellpadding=4>"
+        "<tr><th>Name</th><th>TaxType</th><th>Rate</th><th>Status</th></tr>"
+        f"{rows}</table>"
+    )
+
+
 if __name__ == "__main__":
+    # Fail loud at boot, not deep inside /callback, if the secret didn't load.
+    if not os.environ.get("XERO_CLIENT_SECRET"):
+        print(
+            "\n[!] XERO_CLIENT_SECRET is empty in the environment. Put it in .env and "
+            "restart this process (editing .env does NOT hot-reload).\n"
+        )
+    else:
+        print("[ok] XERO_CLIENT_SECRET loaded.")
     # Port 5000 to match the registered redirect URI http://localhost:5000/callback.
     app.run(host="localhost", port=5000, debug=True)
