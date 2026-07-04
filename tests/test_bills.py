@@ -76,6 +76,13 @@ def test_zero_retention_creates_no_retention_bill():
     assert bills["pay_now"]["LineItems"][0]["UnitAmount"] == "600.00"
 
 
+def test_references_distinguish_pay_now_and_retention():
+    # The dashboard filters retention bills on the "(retention)" reference.
+    bills = build_accpay_bills(SPLIT, **KW)
+    assert "(pay now)" in bills["pay_now"]["Reference"]
+    assert "(retention)" in bills["retention"]["Reference"]
+
+
 def test_materials_only_job_omits_labour_line():
     bills = build_accpay_bills(split_bill(500.00, 0.00, 500.00, 10), **KW)
     descs = [li["Description"] for li in bills["pay_now"]["LineItems"]]

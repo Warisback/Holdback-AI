@@ -241,3 +241,26 @@ def get_contact_cis_settings(contact_id: str) -> dict:
     """LIVE read of a contact's CIS settings (never cached). Returns the raw JSON so we
     can echo the exact field names before relying on them (CLAUDE.md API-specifics)."""
     return api_get(f"Contacts/{contact_id}/CISSettings")
+
+
+def get_bills(where: str | None = None, order: str | None = None) -> dict:
+    """Read bills/invoices with an optional Xero `where`/`order` filter (used by the
+    dashboard to list draft retention bills)."""
+    params = {}
+    if where:
+        params["where"] = where
+    if order:
+        params["order"] = order
+    suffix = ("?" + urllib.parse.urlencode(params)) if params else ""
+    return api_get(f"Invoices{suffix}")
+
+
+def get_invoice(invoice_id: str) -> dict:
+    return api_get(f"Invoices/{invoice_id}")
+
+
+def approve_invoice(invoice_id: str) -> dict:
+    """Approve (AUTHORISE) a bill. WRITE. Xero fixes the CIS deduction at the contact's
+    CURRENT rate on approval — which is why we re-read CISSettings just before calling
+    this for a retention bill at release (CLAUDE.md rule 5 / addendum)."""
+    return create_bills([{"InvoiceID": invoice_id, "Status": "AUTHORISED"}])

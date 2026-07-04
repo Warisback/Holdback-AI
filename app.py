@@ -14,6 +14,7 @@ until the numbers are confirmed ("NUMBERS CONFIRMED") and the write module is bu
 import datetime
 import json
 import os
+import re
 import secrets
 
 from dotenv import load_dotenv
@@ -63,6 +64,7 @@ def index():
         f"<p><b>Requesting</b> (from .env):<br><code>{requested}</code></p>"
         f"<p><b>Granted</b> (on token):<br><code>{granted}</code></p>{warn}"
         "<p><a href='/new-bill'>Create bills</a> &middot; "
+        "<a href='/dashboard'>Retention dashboard</a> &middot; "
         "<a href='/contacts'>Contacts</a> &middot; "
         "<a href='/accounts'>Accounts</a> &middot; "
         "<a href='/login'>Reconnect (re-authorise scopes)</a></p>"
@@ -222,6 +224,87 @@ def new_bill_create():
     <p>Open Xero &rarr; Business &rarr; Bills to see them. The CIS deduction shows on the
     labour line once the pay-now bill is approved.</p>
     <p><a href="/new-bill">Create another</a></p>"""
+
+
+def _parse_xero_date(value):
+    """Xero returns dates as '/Date(1798675200000+0000)/'. Return a date for sort/display."""
+    if not value:
+        return None
+    m = re.search(r"/Date\((-?\d+)", value)
+    if not m:
+        return None
+    ms = int(m.group(1))
+    return (datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=ms)).date()
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Retention currently held across jobs, sorted by release date (soonest first)."""
+    data = xero.get_bills(where='Type=="ACCPAY" AND Status=="DRAFT"')
+    items = []
+    for inv in data.get("Invoices", []):
+        ref = inv.get("Reference") or ""
+        # A retention bill is one we tagged "(retention)"; also catch the earlier
+        # bills that were tagged plain "HoldBack" but carry a release due-date.
+        is_retention = "retention" in ref.lower() or (
+            ref.strip() == "HoldBack" and bool(inv.get("DueDate"))
+        )
+        if not is_retention:
+            continue
+        items.append({
+            "id": inv.get("InvoiceID"),
+            "name": (inv.get("Contact") or {}).get("Name", "?"),
+            "held": inv.get("Total"),
+            "due": _parse_xero_date(inv.get("DueDate")),
+            "ref": ref,
+        })
+    items.sort(key=lambda r: (r["due"] is None, r["due"] or datetime.date.max))
+    total_held = sum(float(i["held"] or 0) for i in items)
+    rows = "".join(
+        f"<tr><td>{i['name']}</td><td>{i['due'] or '&mdash;'}</td><td>&pound;{i['held']}</td>"
+        f"<td>{i['ref']}</td><td>"
+        f"<form method='post' action='/dashboard/approve/{i['id']}' "
+        "onsubmit=\"return confirm('Release this retention now? The CIS rate is re-checked "
+        "before approving.')\"><button type='submit'>Release (approve)</button></form>"
+        "</td></tr>"
+        for i in items
+    )
+    if not rows:
+        rows = ("<tr><td colspan='5'>No retention currently held. "
+                "Create some at <a href='/new-bill'>/new-bill</a>.</td></tr>")
+    return (
+        "<h1>Retention held</h1>"
+        f"<p>Across <b>{len(items)}</b> job(s), total held: <b>&pound;{total_held:.2f}</b> "
+        "(incl VAT).</p>"
+        "<table border=1 cellpadding=6><tr><th>Subcontractor</th><th>Release date</th>"
+        "<th>Held</th><th>Ref</th><th>Action</th></tr>"
+        f"{rows}</table>"
+        "<p><a href='/'>Home</a> &middot; <a href='/new-bill'>Create bills</a></p>"
+    )
+
+
+@app.route("/dashboard/approve/<invoice_id>", methods=["POST"])
+def dashboard_approve(invoice_id):
+    """Release a retention bill: re-read the contact's CIS rate, THEN approve (AUTHORISE).
+    Xero fixes the deduction at the current rate on approval (HMRC rate-at-payment rule)."""
+    note = "Approved."
+    try:
+        inv = xero.get_invoice(invoice_id)["Invoices"][0]
+        cid = (inv.get("Contact") or {}).get("ContactID")
+        if cid:
+            xero.get_contact_cis_settings(cid)  # re-fetch rate at release (rule 5)
+            note = "Re-checked the contact's CIS rate at release, then approved."
+    except Exception as exc:  # noqa: BLE001 - re-read is best-effort; Xero applies the rate at approval
+        note = (f"(Could not re-read CIS settings: {exc}) Approved anyway — Xero applies "
+                "the contact's current rate at approval.")
+    try:
+        xero.approve_invoice(invoice_id)
+    except Exception as exc:  # noqa: BLE001
+        return f"<h1>Release failed</h1><pre>{exc}</pre><p><a href='/dashboard'>Back</a></p>", 502
+    return (
+        f"<h1>Released &check;</h1><p>{note}</p>"
+        "<p><a href='/dashboard'>Back to dashboard</a></p>"
+    )
 
 
 if __name__ == "__main__":

@@ -106,13 +106,15 @@ def build_accpay_bills(
         vat_tax_type=vat_tax_type,
     )
 
+    base_ref = reference or "HoldBack"
+
     pay_now = _bill(
         contact_id=contact_id,
         date=date,
         status=pay_now_status,
         line_items=_lines_for(split.pay_now, **codes),
         due_date=pay_now_due_date,
-        reference=reference,
+        reference=f"{base_ref} (pay now)",
     )
 
     retention_lines = _lines_for(split.retention, **codes)
@@ -124,7 +126,7 @@ def build_accpay_bills(
             status="DRAFT",                      # never auto-approved (rule 6)
             line_items=retention_lines,
             due_date=retention_due_date,
-            reference=reference,
+            reference=f"{base_ref} (retention)",  # the dashboard filters on this
         )
 
     return {"pay_now": pay_now, "retention": retention}
