@@ -1,18 +1,16 @@
 # PROGRESS — HoldBack session bridge
 
-CURRENT MILESTONE: FIRST LIVE WRITE done. /new-bill created two ACCPAY DRAFT bills in
-the Demo Company for Candidate 1 (contact "24 Locks"): pay-now net £1,425 (labour £950
-@321 + materials £475 @322), retention net £75 (£50 + £25), due ~2026-12-31. Xero adds
-20% VAT (INPUT2) on top, so shown Totals are £1,710 / £90 — net split is correct.
+CURRENT MILESTONE: FIRST LIVE WRITE VERIFIED end-to-end. /new-bill created two ACCPAY
+DRAFT bills for Candidate 1 (contact "24 Locks"), and Xero computed CIS correctly:
+- Pay-now: net £1,425 (labour £950 @321 + materials £475 @322), VAT £285, Total £1,710,
+  CIS deduction £190 (20% of £950 labour), Amount Due £1,520.
+- Retention: net £75, VAT £15, Total £90, CIS £10 (preview), due 2026-12-31.
+Materials never touched by CIS. The whole split -> bills -> CIS chain is proven.
 
 TESTS: 27 passed, 0 skipped. Engine matches all 3 fixtures incl. tie-break.
 
-VERIFYING NOW (user): approve the pay-now bill in Xero and confirm CIS = £190 (20% of the
-£950 labour line only; materials untouched).
-
 OPEN QUESTIONS (escalate exactly as written):
-1. "Once approved, does the pay-now bill show CIS £190 withheld on the £950 labour line?"
-   (Confirms the contact's 20% rate + CIS account coding are wired correctly.)
+- (none blocking) Need an Anthropic API key to build PDF extraction (priority #2).
 
 DECISIONS MADE THIS SESSION:
 - Half-penny tie-break = ROUND_HALF_DOWN (Option B, accountant-CONFIRMED).
