@@ -86,6 +86,12 @@ def granted_scopes() -> str:
     return _load_tokens().get("scope", "")
 
 
+def requested_scopes() -> str:
+    """Scopes this app is configured to REQUEST (from .env). If a scope is requested but
+    never appears in granted_scopes(), Xero is refusing it (app-config / consent issue)."""
+    return os.environ.get("XERO_SCOPES", "")
+
+
 # --- OAuth flow -------------------------------------------------------------
 def build_authorize_url(state: str) -> str:
     """URL to send the user to for consent. `state` guards against CSRF."""
