@@ -47,8 +47,12 @@ compaction). Where the base brief and the addendum conflict, **the addendum wins
 
 ## What this does
 
-1. **PDF upload** → one Anthropic API call extracts, as strict JSON:
-   `{retention_pct, trigger1:{condition, pct, expected_date}, trigger2:{...}, contract_value}`.
+1. **PDF upload** → one Anthropic API call extracts, as strict JSON. **Every field is
+   wrapped as `{value, confidence: 0-1}`** — BOUNTY-01, schema change is IMMEDIATE
+   (using the confidence in the UI is Stretch A, not required for the core flow):
+   `{retention_pct:{value,confidence}, trigger1:{condition:{value,confidence},
+   pct:{value,confidence}, expected_date:{value,confidence}}, trigger2:{...},
+   contract_value:{value,confidence}}`.
 2. **Confirm screen** (editable) shown before anything is written to Xero.
    "Practical completion" is a *condition, not a date* — the screen asks the user for
    an **expected date per trigger**; that date due-dates the draft retention bill and
@@ -120,12 +124,31 @@ asserting all three.
 2. Working end-to-end flow on **one** PDF format.
 3. Confirmation screen.
 4. Minimal dashboard.
+5. **Stretch A** — amber low-confidence highlight (only after the dashboard works). See BOUNTY-01.
+6. **Stretch B** — messy-phrasing test contract (demo prep, not code). See BOUNTY-01.
 
-Stop there — no visual polish, no second PDF format, no edge cases (multi-site, VAT
-reverse charge, re-verification thresholds) unless everything above is solid.
+Stop after Stretch B — no visual polish beyond Stretch A's amber highlight, no second
+PDF *format* support, no edge cases (multi-site, VAT reverse charge, re-verification
+thresholds) unless everything above is solid.
 
 **Stack:** Python backend, basic React frontend. **Milestone commits:** OAuth OK /
 split engine green / first live write / confirm screen / dashboard.
+
+---
+
+## BOUNTY-01 additions (do not reorder core priorities)
+
+- **Extraction confidence — IMMEDIATE schema change.** Every extracted field returns
+  `{value, confidence: 0-1}`, not a bare value. Change the extraction schema now;
+  *using* the confidence in the UI is a stretch goal (Stretch A), not core.
+- **Stretch A — amber low-confidence highlight (only after the dashboard works).** On
+  the confirm screen, highlight any field with `confidence < 0.8` in amber. That is the
+  **only** additional styling permitted — no other visual work.
+- **Stretch B — messy-phrasing test (demo prep, not code).** Run a second test contract
+  with awkward wording ("five per cent", "moiety on practical completion") through the
+  **same** pipeline to show robustness. **NOT** second-format support — no parser changes.
+- **Priority order now:** split engine → e2e on one PDF → confirm screen → dashboard →
+  Stretch A → Stretch B. Stop there.
 
 ---
 
@@ -257,5 +280,21 @@ WORKING PRACTICE:
   ENABLED at org level; enable contractor mode and set one contact as a CIS
   subcontractor. If the demo org cannot enable CIS, STOP and tell me — the plan changes
   (fresh UK trial org).
+```
+</details>
+
+<details><summary>BOUNTY-01 additions</summary>
+
+```
+BOUNTY-01 ADDITIONS (do not reorder core priorities):
+- Extraction JSON: every field returns {value, confidence: 0-1}. Schema change is
+  IMMEDIATE; UI use is a stretch goal.
+- STRETCH A (only after dashboard works): confirm screen highlights any field with
+  confidence < 0.8 in amber. No other styling work.
+- STRETCH B (demo prep, not code): second test contract with messy phrasing
+  ("five per cent", "moiety on practical completion") through the SAME pipeline.
+  No second format support.
+- Priority order now: split engine → e2e on one PDF → confirm screen → dashboard →
+  Stretch A → Stretch B. Stop there.
 ```
 </details>
