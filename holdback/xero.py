@@ -80,6 +80,12 @@ def is_connected() -> bool:
     return bool(_load_tokens().get("access_token"))
 
 
+def granted_scopes() -> str:
+    """The scopes actually granted on the stored token (from Xero's token response).
+    A write 401 usually means accounting.invoices is NOT in here yet — re-consent needed."""
+    return _load_tokens().get("scope", "")
+
+
 # --- OAuth flow -------------------------------------------------------------
 def build_authorize_url(state: str) -> str:
     """URL to send the user to for consent. `state` guards against CSRF."""

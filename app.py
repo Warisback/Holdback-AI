@@ -40,16 +40,28 @@ def index():
         )
     try:
         org = xero.get_organisation()["Organisations"][0]
-        return (
-            f"<h1>HoldBack</h1><p>Connected ✓ &mdash; organisation: "
-            f"<b>{org.get('Name')}</b> ({org.get('CountryCode')})</p>"
-            '<p><a href="/contacts">List contacts &rarr; inspect CIS settings</a></p>'
-        )
     except Exception as exc:  # noqa: BLE001 - surface the raw error during the build
         return (
             f"<h1>HoldBack</h1><p>Connected, but the API call failed:</p>"
             f"<pre>{exc}</pre><p><a href='/login'>Reconnect</a></p>"
         )
+    scopes = xero.granted_scopes()
+    write_ok = "accounting.invoices" in scopes
+    warn = "" if write_ok else (
+        "<p style='color:#b00'><b>No write permission yet.</b> 'accounting.invoices' is "
+        "missing from your granted scopes, so creating a bill will 401. Fix: ensure .env "
+        "has it, fully restart the app, then <a href='/login'>Reconnect to Xero</a> and "
+        "approve the new permission.</p>"
+    )
+    return (
+        f"<h1>HoldBack</h1><p>Connected &check; &mdash; <b>{org.get('Name')}</b> "
+        f"({org.get('CountryCode')})</p>"
+        f"<p>Granted scopes:<br><code>{scopes}</code></p>{warn}"
+        "<p><a href='/new-bill'>Create bills</a> &middot; "
+        "<a href='/contacts'>Contacts</a> &middot; "
+        "<a href='/accounts'>Accounts</a> &middot; "
+        "<a href='/login'>Reconnect (re-authorise scopes)</a></p>"
+    )
 
 
 @app.route("/login")
