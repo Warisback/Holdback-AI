@@ -234,3 +234,54 @@ def indicative_cis(labour_amount, cis_rate_pct) -> Decimal:
     return (labour_amount * cis_rate_pct / Decimal("100")).quantize(
         _CENT, rounding=ROUND_HALF_UP
     )
+
+
+def split_tranches(retention: BillLines, shares) -> list[BillLines]:
+    """Split a retention BillLines into N dated tranches by `shares` (percentages that
+    sum to 100 — e.g. [50, 50] for half at practical completion, half at end of defects).
+
+    This is a LAYER on top of the verified split_bill; it does not touch split_bill or its
+    ground-truth fixtures. Per line type (labour, materials) INDEPENDENTLY:
+        tranche_i  = ROUND_HALF_DOWN(line * share_i / 100)   for every share except the last
+        last       = line - sum(previous)                     (exact remainder)
+    So tranche sums reconcile to the retention lines EXACTLY, at any N, by construction.
+
+    HARD GUARD (CLAUDE.md rule 7 — no untested live path): N>2 raises NotImplementedError
+    until a ground-truth fixture exists. N==1 returns the retention unchanged (today's
+    single-bill behaviour). N==2 is the fixture-validated product path.
+
+    WHY there is no CIS "safe direction" BETWEEN tranches (rule 9): each tranche is its OWN
+    payment, assessed for CIS at its OWN payment date — so unlike the pay-now/retention
+    split (where over-withholding now is the safe direction), no tranche is preferred. The
+    ROUND_HALF_DOWN + last-tranche-remainder scheme is chosen purely for determinism, exact
+    reconciliation, and consistency with the engine's rounding convention — NOT for any
+    compliance reason. The splitter is general; the *product* is gated to N<=2 by fixtures.
+    """
+    shares = [s if isinstance(s, Decimal) else Decimal(str(s)) for s in shares]
+    if len(shares) > 2:
+        raise NotImplementedError(
+            "N>2 tranches is v2 — requires a ground-truth fixture first (CLAUDE.md rule 7)"
+        )
+    if not shares or any(s <= 0 for s in shares):
+        raise ValueError(f"all tranche shares must be > 0, got {shares}")
+    if sum(shares) != Decimal("100"):
+        raise ValueError(f"tranche shares must sum to exactly 100, got {sum(shares)}")
+
+    def split_line(amount: Decimal) -> list[Decimal]:
+        parts = [
+            (amount * s / Decimal("100")).quantize(_CENT, rounding=_RETENTION_ROUNDING)
+            for s in shares[:-1]
+        ]
+        parts.append(amount - sum(parts))  # last tranche is the exact remainder
+        return parts
+
+    labour_parts = split_line(retention.labour)
+    materials_parts = split_line(retention.materials)
+    tranches = [
+        BillLines(labour=labour_parts[i], materials=materials_parts[i])
+        for i in range(len(shares))
+    ]
+    # defence in depth: tranche sums must reconcile to the retention lines exactly
+    assert sum(t.labour for t in tranches) == retention.labour, "tranche labour broke"
+    assert sum(t.materials for t in tranches) == retention.materials, "tranche materials broke"
+    return tranches

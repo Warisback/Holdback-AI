@@ -17,9 +17,10 @@ DONE:
 TESTS: 28 passed, 0 skipped.
 
 OPEN QUESTIONS (escalate exactly as written):
-1. STEP 2 fixtures — confirm my computed tranche outputs match your hand-calc for
-   T1 (labour_r 350.01, materials_r 150.00, 50/50) and T2 (labour_r 333.33,
-   materials_r 166.67, 60/40) BEFORE I lock exact-value asserts. STOP on any delta.
+1. STEP 2 fixtures — CONFIRM these computed tranche outputs match your hand-calc, then I
+   lock them + wire the live 2-tranche path (STOP on any delta):
+   T1 (350.01/150.00, 50/50) -> t1 (175.00, 75.00), t2 (175.01, 75.00).
+   T2 (333.33/166.67, 60/40) -> t1 (200.00, 100.00), t2 (133.33, 66.67).
 2. (housekeeping) CISSettings field names still not echoed — will print on the next
    /dashboard Release run (or via /cis/<id>).
 
@@ -29,6 +30,8 @@ KEY DECISIONS:
   due-dated; VAT added on top (Total = net x 1.2).
 - Extraction = Gemini (EXTRACT_PROVIDER/MODEL in .env), wrapper provider-agnostic; never
   crashes the flow (blank confirm on failure). Durable ROADMAP now lives in CLAUDE.md.
+- Splitter list-based, hard-guarded to <=2 tranches (rule 7); engine + structural tests
+  built (41 passed); exact T1/T2 fixtures + live 2-tranche wiring pending confirmation.
 
 NEXT STEP: build STEP 2 tranche splitter as a LAYER on the verified engine (list-based,
 hard-guarded to <=2 tranches per rule 7). Present computed T1/T2 for confirmation, then
