@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from .split_engine import BillLines, Split
+from .split_engine import BillLines, Split, split_tranches
 
 
 def _line(description: str, amount: Decimal, account_code: str, tax_type: str) -> dict:
@@ -72,7 +72,7 @@ def build_accpay_bills(
     *,
     contact_id: str,
     date: str,
-    retention_due_date: str,
+    tranches: list[dict],
     cis_labour_account_code: str,
     materials_account_code: str,
     vat_tax_type: str,
@@ -80,32 +80,25 @@ def build_accpay_bills(
     pay_now_due_date: str | None = None,
     reference: str | None = None,
 ) -> dict:
-    """Return {"pay_now": <bill dict>, "retention": <bill dict or None>}.
+    """Return {"pay_now": <bill>, "retention_bills": [<bill>, ...]}.
 
-    Parameters
-    ----------
-    split               : output of split_engine.split_bill
-    contact_id           : the CIS subcontractor's Xero ContactID
-    date                 : bill date, ISO "YYYY-MM-DD"
-    retention_due_date   : expected release date for the retention bill (drives the
-                           dashboard sort) — ISO "YYYY-MM-DD"
-    cis_labour_account_code : account code for CIS Labour Expense (Xero applies CIS here)
-    materials_account_code  : account code for a normal materials expense (excluded from CIS)
-    vat_tax_type            : the org's 20% VAT-on-expenses TaxType (confirm exact name)
-    pay_now_status          : "AUTHORISED" fixes CIS now (default); "DRAFT" if you want to
-                              eyeball the bill in Xero and approve it by hand first.
-    pay_now_due_date        : optional ISO date; omitted -> Xero defaults it.
-    reference               : optional text stamped on both bills (useful on the dashboard).
+    `tranches` is a list of {"share": <percent>, "due_date": "YYYY-MM-DD"}; the retention
+    is split across them by split_tranches (shares > 0 and summing to 100):
+      - 1 tranche  -> one retention bill, reference "... (retention)"      (single-release)
+      - 2 tranches -> two dated bills, references "... (retention 1/2)" / "(2/2)"
+      - >2         -> split_tranches raises NotImplementedError (rule 7 hard guard)
+    Every retention bill is DRAFT and due-dated to its trigger, approved later at release.
+    A zero-value tranche (e.g. 0% retention) produces no bill. All references contain
+    "(retention)" so the dashboard filter stays valid.
 
-    The RETENTION bill is ALWAYS created as DRAFT and due-dated to release; it is approved
-    later from the dashboard (after re-fetching the contact's CIS rate).
+    Other params: split (from split_bill); contact_id; date; account codes; vat_tax_type;
+    pay_now_status ("AUTHORISED" fixes CIS now, "DRAFT" to review first); reference (base).
     """
     codes = dict(
         cis_labour_account_code=cis_labour_account_code,
         materials_account_code=materials_account_code,
         vat_tax_type=vat_tax_type,
     )
-
     base_ref = reference or "HoldBack"
 
     pay_now = _bill(
@@ -117,16 +110,21 @@ def build_accpay_bills(
         reference=f"{base_ref} (pay now)",
     )
 
-    retention_lines = _lines_for(split.retention, **codes)
-    retention = None
-    if retention_lines:  # skip entirely when retention is 0
-        retention = _bill(
+    n = len(tranches)
+    parts = split_tranches(split.retention, [t["share"] for t in tranches])
+    retention_bills: list[dict] = []
+    for i, (spec, part) in enumerate(zip(tranches, parts), start=1):
+        lines = _lines_for(part, **codes)
+        if not lines:  # skip a zero-value tranche (e.g. 0% retention)
+            continue
+        ref = f"{base_ref} (retention)" if n == 1 else f"{base_ref} (retention {i}/{n})"
+        retention_bills.append(_bill(
             contact_id=contact_id,
             date=date,
-            status="DRAFT",                      # never auto-approved (rule 6)
-            line_items=retention_lines,
-            due_date=retention_due_date,
-            reference=f"{base_ref} (retention)",  # the dashboard filters on this
-        )
+            status="DRAFT",                        # never auto-approved (rule 6)
+            line_items=lines,
+            due_date=spec["due_date"],
+            reference=ref,                         # dashboard filters on "(retention)"
+        ))
 
-    return {"pay_now": pay_now, "retention": retention}
+    return {"pay_now": pay_now, "retention_bills": retention_bills}

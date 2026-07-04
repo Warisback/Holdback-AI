@@ -16,6 +16,7 @@ import json
 import os
 import re
 import secrets
+from decimal import Decimal
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, request, session, url_for
@@ -263,13 +264,17 @@ def new_bill_form():
     )
     today = datetime.date.today().isoformat()
     default_release = (datetime.date.today() + datetime.timedelta(days=180)).isoformat()
-    retention_val = (stored or {}).get("retention_pct") or "5"
-    release_val = (stored or {}).get("trigger1_date") or default_release
+    s = stored or {}
+    retention_val = s.get("retention_pct") or "5"
+    t1_pct = s.get("trigger1_pct") or "100"
+    t1_date = s.get("trigger1_date") or default_release
+    t2_pct = s.get("trigger2_pct") or ""
+    t2_date = s.get("trigger2_date") or ""
     note = ("<p style='color:#080'>Loaded saved terms for this job &mdash; fields still "
             "overridable.</p>") if stored else ""
     return f"""
     <h1>Create HoldBack bills</h1>
-    <p>Splits one subcontractor bill into a pay-now bill + a DRAFT retention bill.</p>
+    <p>Splits one subcontractor bill into a pay-now bill + DRAFT retention bill(s).</p>
     {note}
     <form method="post">
       <p>Subcontractor (pick the one set up as a CIS subcontractor):<br>
@@ -279,9 +284,16 @@ def new_bill_form():
       <p>Total &pound;<input name="total" value="1500.00" size="10">
          = Labour &pound;<input name="labour" value="1000.00" size="10">
          + Materials &pound;<input name="materials" value="500.00" size="10"></p>
-      <p>Retention <input name="retention_pct" value="{retention_val}" size="3">%</p>
-      <p>Bill date <input name="date" value="{today}" size="12">
-         &nbsp; Retention release date <input name="retention_due_date" value="{release_val}" size="12"></p>
+      <p>Retention <input name="retention_pct" value="{retention_val}" size="3">% &nbsp;
+         Bill date <input name="date" value="{today}" size="12"></p>
+      <fieldset><legend>Release triggers (retention released in tranches)</legend>
+        <p>Trigger 1 &mdash; share <input name="trigger1_pct" value="{t1_pct}" size="3">%
+           on <input name="trigger1_date" value="{t1_date}" size="12"></p>
+        <p>Trigger 2 (optional) &mdash; share <input name="trigger2_pct" value="{t2_pct}" size="3">%
+           on <input name="trigger2_date" value="{t2_date}" size="12"></p>
+        <small>Leave Trigger 2 blank for a single release (100% at Trigger 1). For two
+        releases, the two shares must sum to 100.</small>
+      </fieldset>
       <p>Pay-now bill:
         <label><input type="radio" name="pay_now_status" value="DRAFT" checked>
           Draft (review &amp; approve by hand)</label>
@@ -296,48 +308,65 @@ def new_bill_form():
 def new_bill_create():
     f = request.form
     split = split_bill(f["total"], f["labour"], f["materials"], f["retention_pct"])
+
+    # Build the release tranches. Trigger 2 blank -> single release (100% at Trigger 1);
+    # both present -> two tranches whose shares must sum to 100.
+    t1_date = f.get("trigger1_date", "").strip()
+    t2_date = f.get("trigger2_date", "").strip()
+    try:
+        if t2_date:
+            t1 = Decimal(f.get("trigger1_pct", "").strip() or "0")
+            t2 = Decimal(f.get("trigger2_pct", "").strip() or "0")
+            if t1 + t2 != Decimal("100"):
+                return (f"<h1>Check tranche shares</h1><p>Trigger shares must sum to 100 "
+                        f"(got {t1} + {t2} = {t1 + t2}).</p>"
+                        "<p><a href='/new-bill'>Back</a></p>"), 400
+            tranches = [{"share": t1, "due_date": t1_date},
+                        {"share": t2, "due_date": t2_date}]
+        else:
+            tranches = [{"share": Decimal("100"), "due_date": t1_date}]
+    except Exception as exc:  # noqa: BLE001
+        return f"<h1>Bad trigger input</h1><pre>{exc}</pre><p><a href='/new-bill'>Back</a></p>", 400
+
     payloads = build_accpay_bills(
         split,
         contact_id=f["contact_id"],
         date=f["date"],
-        retention_due_date=f["retention_due_date"],
+        tranches=tranches,
         cis_labour_account_code=CIS_LABOUR_ACCOUNT,
         materials_account_code=MATERIALS_ACCOUNT,
         vat_tax_type=VAT_TAX_TYPE,
         pay_now_status=f["pay_now_status"],
         reference="HoldBack",
     )
-    to_create = [payloads["pay_now"]]
-    if payloads["retention"]:
-        to_create.append(payloads["retention"])
+    to_create = [payloads["pay_now"], *payloads["retention_bills"]]
     try:
         result = xero.create_bills(to_create)
     except Exception as exc:  # noqa: BLE001 - show Xero's raw error during the build
         body = (
             f"<h1>Create failed</h1><pre>{exc}</pre>"
             f"<p><b>Granted scopes:</b> <code>{xero.granted_scopes()}</code></p>"
-            "<p>A 401 here almost always means the write scope isn't in the list above. "
-            "If 'accounting.invoices' is missing, the reconnect didn't grant it (or the app "
-            "in the Xero developer portal doesn't have that scope enabled).</p>"
+            "<p>A 401 here almost always means the write scope isn't in the list above.</p>"
             "<p><a href='/'>Home</a> &middot; <a href='/login'>Reconnect</a> &middot; "
             "<a href='/new-bill'>Back</a></p>"
         )
         return body, 502
     rows = "".join(
-        f"<tr><td>{inv.get('Type')}</td><td>{inv.get('InvoiceNumber')}</td>"
-        f"<td>{inv.get('Status')}</td><td>{inv.get('Total')}</td>"
-        f"<td>{inv.get('DueDate', '')}</td><td><code>{inv.get('InvoiceID')}</code></td></tr>"
+        f"<tr><td>{inv.get('Reference')}</td><td>{inv.get('Status')}</td>"
+        f"<td>&pound;{inv.get('Total')}</td><td>{inv.get('DueDate', '')}</td>"
+        f"<td><code>{inv.get('InvoiceID')}</code></td></tr>"
         for inv in result.get("Invoices", [])
     )
     return f"""
     <h1>Created &check;</h1>
     <table border=1 cellpadding=4>
-      <tr><th>Type</th><th>No.</th><th>Status</th><th>Total</th><th>Due</th><th>InvoiceID</th></tr>
+      <tr><th>Reference</th><th>Status</th><th>Total</th><th>Due</th><th>InvoiceID</th></tr>
       {rows}
     </table>
-    <p>Open Xero &rarr; Business &rarr; Bills to see them. The CIS deduction shows on the
-    labour line once the pay-now bill is approved.</p>
-    <p><a href="/new-bill">Create another</a></p>"""
+    <p>Open Xero &rarr; Business &rarr; Bills to see them. CIS shows on the labour line
+    once a bill is approved.</p>
+    <p><a href="/dashboard">Retention dashboard</a> &middot;
+       <a href="/new-bill">Create another</a></p>"""
 
 
 def _parse_xero_date(value):

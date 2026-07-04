@@ -75,7 +75,13 @@ def test_single_tranche_returns_retention_unchanged():
 # T2: retention labour £333.33, materials £166.67, shares 60/40
 # Each entry: {"retention": (labour, materials), "shares": [...],
 #              "expected": [(t1_labour, t1_materials), (t2_labour, t2_materials)]}
-TRANCHE_FIXTURES: list[dict] = []
+TRANCHE_FIXTURES: list[dict] = [
+    # Confirmed digit-by-digit against an independent spec-derived derivation (rule 7).
+    {"retention": ("350.01", "150.00"), "shares": [50, 50],
+     "expected": [("175.00", "75.00"), ("175.01", "75.00")]},   # T1 (labour tie 175.005 -> down)
+    {"retention": ("333.33", "166.67"), "shares": [60, 40],
+     "expected": [("200.00", "100.00"), ("133.33", "66.67")]},   # T2
+]
 
 
 @pytest.mark.parametrize("fx", TRANCHE_FIXTURES)
@@ -91,3 +97,23 @@ def test_tranche_ground_truth_present():
     if not TRANCHE_FIXTURES:
         pytest.skip("Waiting on the user's hand-calculated T1/T2 tranche numbers.")
     assert len(TRANCHE_FIXTURES) >= 2
+
+
+def test_composition_c1_across_all_three_bills():
+    """C1 (confirmed): invoice £10,000.20 (labour 7,000.20, materials 3,000.00), 5%
+    retention, shares 50/50. Anchors the three reconciliations across pay-now + both
+    tranches. The engine's retention here is exactly T1's inputs (350.01 / 150.00)."""
+    s = split_bill(10000.20, 7000.20, 3000.00, 5)
+    assert s.pay_now.labour == D("6650.19")
+    assert s.pay_now.materials == D("2850.00")
+    assert (s.retention.labour, s.retention.materials) == (D("350.01"), D("150.00"))
+
+    tranches = split_tranches(s.retention, [50, 50])
+    assert [(t.labour, t.materials) for t in tranches] == [
+        (D("175.00"), D("75.00")), (D("175.01"), D("75.00"))]
+
+    labour = [s.pay_now.labour] + [t.labour for t in tranches]
+    materials = [s.pay_now.materials] + [t.materials for t in tranches]
+    assert sum(labour) == D("7000.20")                       # (2) labour across all 3 bills
+    assert sum(materials) == D("3000.00")                    # (3) materials across all 3 bills
+    assert sum(labour) + sum(materials) == D("10000.20")     # (1) total across all 3 bills
