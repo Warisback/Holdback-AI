@@ -1,2 +1,5 @@
 # HoldBack dependencies. Kept minimal — added as each milestone needs them.
-pytest>=8.0        # split-engine tests
+pytest>=8.0         # split-engine tests
+flask>=3.0          # OAuth callback server + confirm/dashboard UI shell
+requests>=2.31      # Xero API calls (no Xero MCP connected this session)
+python-dotenv>=1.0  # load .env

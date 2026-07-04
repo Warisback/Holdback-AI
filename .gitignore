@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# HoldBack — local secrets / OAuth tokens (never commit)
+token_store.json

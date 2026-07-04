@@ -92,8 +92,11 @@ compaction). Where the base brief and the addendum conflict, **the addendum wins
   exact field names in the first live session and echo them to the user before use.**
 - OAuth: redirect URI **`http://localhost:5000/callback`** — exact match, no trailing
   slash, `localhost` not `127.0.0.1`. Scopes **must include `offline_access`** (access
-  tokens expire ~30 min; build is ~13 h). Post-March-2026 **granular scopes** — confirm
-  exact scope names for Contacts, Invoices/Bills, Organisation before assuming old broad scopes.
+  tokens expire ~30 min; build is ~13 h). **Granular scopes ONLY** — the app was created
+  after 2 Mar 2026, so broad scopes (`accounting.transactions`, etc.) are UNAVAILABLE and
+  requesting one breaks consent. Reads use `accounting.settings.read` (Organisation, tax
+  rates) + `accounting.contacts.read` (Contacts, CISSettings). Writes (ACCPAY bills) need
+  the bill scope — **likely `accounting.bills`; confirm the exact ACCPAY write scope**.
 - `LineAmountTypes="Exclusive"`; **one fixed `TaxType` on every line** — the demo org's
   standard **20 % VAT-on-expenses** code (**confirm its exact name in the org first**).
   Domestic reverse charge is **deliberately out of scope**.
@@ -164,6 +167,20 @@ split engine green / first live write / confirm screen / dashboard.
   **same** pipeline to show robustness. **NOT** second-format support — no parser changes.
 - **Priority order now:** split engine → e2e on one PDF → confirm screen → dashboard →
   Stretch A → Stretch B. Stop there.
+
+---
+
+## Session bridge — PROGRESS.md (maintain continuously)
+
+Maintain **`PROGRESS.md`** in the repo root so a review chat can pick up cold. Update it
+at **every milestone commit** and **whenever you STOP on an uncertainty**. Keep it under
+~60 lines (it gets pasted into a review chat — must read cold). **Overwrite, don't
+append** history (git holds history). Fields:
+- **CURRENT MILESTONE:** OAuth OK / split engine green / first live write / confirm screen / dashboard / stretch A / stretch B
+- **TESTS:** pass/fail count; any fixture deltas verbatim
+- **OPEN QUESTIONS:** anything flagged under rule 8, phrased exactly as the question to escalate
+- **DECISIONS MADE THIS SESSION:** one line each, with a reasoning reference
+- **NEXT STEP:** the single next action
 
 ---
 
