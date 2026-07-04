@@ -1,0 +1,2 @@
+# HoldBack dependencies. Kept minimal — added as each milestone needs them.
+pytest>=8.0        # split-engine tests
