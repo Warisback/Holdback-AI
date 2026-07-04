@@ -191,8 +191,17 @@ def new_bill_create():
         to_create.append(payloads["retention"])
     try:
         result = xero.create_bills(to_create)
-    except Exception as exc:  # noqa: BLE001 - show Xero's raw validation error during the build
-        return f"<h1>Create failed</h1><pre>{exc}</pre><p><a href='/new-bill'>Back</a></p>", 502
+    except Exception as exc:  # noqa: BLE001 - show Xero's raw error during the build
+        body = (
+            f"<h1>Create failed</h1><pre>{exc}</pre>"
+            f"<p><b>Granted scopes:</b> <code>{xero.granted_scopes()}</code></p>"
+            "<p>A 401 here almost always means the write scope isn't in the list above. "
+            "If 'accounting.invoices' is missing, the reconnect didn't grant it (or the app "
+            "in the Xero developer portal doesn't have that scope enabled).</p>"
+            "<p><a href='/'>Home</a> &middot; <a href='/login'>Reconnect</a> &middot; "
+            "<a href='/new-bill'>Back</a></p>"
+        )
+        return body, 502
     rows = "".join(
         f"<tr><td>{inv.get('Type')}</td><td>{inv.get('InvoiceNumber')}</td>"
         f"<td>{inv.get('Status')}</td><td>{inv.get('Total')}</td>"
