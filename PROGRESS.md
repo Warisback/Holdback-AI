@@ -1,28 +1,32 @@
 # PROGRESS — HoldBack session bridge
 
-CURRENT MILESTONE: FIRST LIVE WRITE VERIFIED end-to-end. /new-bill created two ACCPAY
-DRAFT bills for Candidate 1 (contact "24 Locks"), and Xero computed CIS correctly:
-- Pay-now: net £1,425 (labour £950 @321 + materials £475 @322), VAT £285, Total £1,710,
-  CIS deduction £190 (20% of £950 labour), Amount Due £1,520.
-- Retention: net £75, VAT £15, Total £90, CIS £10 (preview), due 2026-12-31.
-Materials never touched by CIS. The whole split -> bills -> CIS chain is proven.
+CURRENT MILESTONE: DASHBOARD built. Core flow verified live earlier (Candidate 1:
+pay-now CIS £190, retention CIS £10, materials untouched). Remaining: PDF extraction +
+confirm screen (priority #2/#3), then stretch A/B.
 
-TESTS: 27 passed, 0 skipped. Engine matches all 3 fixtures incl. tie-break.
+DONE:
+- Split engine (pure, tie-break ROUND_HALF_DOWN) — all 3 ground-truth fixtures green.
+- OAuth (prompt=consent fix) + read/write to Xero. Scopes: settings.read, contacts.read,
+  offline_access, accounting.invoices.
+- /new-bill: split -> two ACCPAY bills (labour 321 / materials 322, INPUT2 VAT). First
+  live write verified in Xero.
+- /dashboard: retention held across jobs, sorted by release date; "Release (approve)"
+  button re-reads the contact's CIS rate then AUTHORISES the draft retention bill.
+- Bills tagged Reference "HoldBack (pay now)" / "HoldBack (retention)" so the dashboard
+  can filter retention bills.
 
-OPEN QUESTIONS (escalate exactly as written):
-- (none blocking) Need an Anthropic API key to build PDF extraction (priority #2).
+TESTS: 28 passed, 0 skipped.
 
-DECISIONS MADE THIS SESSION:
-- Half-penny tie-break = ROUND_HALF_DOWN (Option B, accountant-CONFIRMED).
-- Pay-now labour is the reconciliation plug; residue lands there.
-- All 3 ground-truth fixtures match exactly (NUMBERS CONFIRMED).
-- Bills: Type=ACCPAY, Exclusive, labour->321, materials->322, TaxType INPUT2, NO CIS line
-  (Xero deducts at approval). Retention always DRAFT + due-dated; pay-now chosen DRAFT for
-  the first write. VAT (20%) is added on top by Xero -> Total = net x 1.2.
-- Xero scope gate was NOT the reference list on the config page; fix was prompt=consent on
-  the authorize URL so Xero re-shows consent and grants accounting.invoices.
-- Scopes now granted: settings.read, contacts.read, offline_access, accounting.invoices.
+OPEN QUESTIONS:
+- Need an Anthropic API key (ANTHROPIC_API_KEY in .env) to build PDF extraction (#2).
 
-NEXT STEP: after CIS is verified, build the priority-2/3 pieces — PDF term extraction
-(one Anthropic call -> {field:{value,confidence}}) + an editable confirm screen that
-feeds /new-bill. Then the dashboard (retention held, sort by release date, approve button).
+KEY DECISIONS:
+- Tie-break ROUND_HALF_DOWN (Option B, accountant-confirmed); pay-now labour is the plug.
+- Bills: Type=ACCPAY, Exclusive, NO CIS line (Xero deducts at approval); retention always
+  DRAFT + due-dated; VAT added on top by Xero (Total = net x 1.2).
+- Release button re-fetches CISSettings before approving (rate-at-payment rule); best-effort
+  (Xero applies the current rate on approval regardless).
+
+NEXT STEP: user smoke-tests /dashboard (create 2-3 retention bills via /new-bill with
+different subcontractors + release dates, confirm sort order, release one). Then build PDF
+extraction + editable confirm screen (needs Anthropic key).
