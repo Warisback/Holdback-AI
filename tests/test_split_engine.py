@@ -72,6 +72,28 @@ def test_adversarial_fixture_exact_values():
     assert s.pay_now.total == D("1172.83")
 
 
+@pytest.mark.parametrize(
+    "total,labour,materials,pct,exp_ret_labour,exp_pay_labour",
+    [
+        # labour * 5% lands on an exact half-penny -> retention rounds DOWN,
+        # pay-now labour (the CIS base paid now) keeps the extra penny.
+        (0.30, 0.30, 0.00, 5, "0.01", "0.29"),  # 0.30*0.05 = 0.015 (tie) -> 0.01 not 0.02
+        (0.10, 0.10, 0.00, 5, "0.00", "0.10"),  # 0.10*0.05 = 0.005 (tie) -> 0.00 not 0.01
+    ],
+)
+def test_half_penny_tie_rounds_toward_over_withholding(
+    total, labour, materials, pct, exp_ret_labour, exp_pay_labour
+):
+    """Option B (accountant-CONFIRMED): on an exact tie, retention labour rounds
+    DOWN so more sits on the pay-now labour line. This asserts ROUND_HALF_DOWN;
+    it would FAIL under ROUND_HALF_UP (which would give 0.02 / 0.01 retention)."""
+    s = split_bill(total, labour, materials, pct)
+    assert s.retention.labour == D(exp_ret_labour)
+    assert s.pay_now.labour == D(exp_pay_labour)
+    # invariants still hold
+    assert s.pay_now.labour + s.retention.labour == D(labour)
+
+
 def test_inconsistent_input_is_rejected():
     """labour + materials != total must raise, not silently reconcile."""
     with pytest.raises(ValueError, match="PRECONDITION"):
