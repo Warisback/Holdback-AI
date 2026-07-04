@@ -1,0 +1,103 @@
+/* HoldBack — sober ledger tool. One design-token stylesheet. No framework, no CDN,
+   no JS, no dark mode. Whitespace and alignment do the work. (We skip the pico CDN
+   layer to honour "no CDN downloads" and provide a self-contained baseline here.) */
+
+:root {
+  --bg:#F7F6F3; --surface:#FFFFFF; --ink:#1C1C1A; --muted:#6B6A64;
+  --border:#E5E3DC; --accent:#0F6E56; --accent-ink:#FFFFFF;
+  --held-bg:#FEF3C7; --held-ink:#92400E;
+  --rel-bg:#DBEAFE;  --rel-ink:#1D4ED8;
+  --paid-bg:#DCFCE7; --paid-ink:#15803D;
+  --radius:8px; --radius-sm:6px; --shadow:0 1px 2px rgba(0,0,0,.06);
+}
+
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--bg); color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+h1 { font-size:20px; font-weight:600; letter-spacing:-.01em; margin:0 0 12px; }
+h2 { font-size:16px; font-weight:600; margin:0 0 8px; }
+p { margin:0 0 12px; }
+small { color:var(--muted); }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+pre { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:12px; overflow:auto; font-size:12px; }
+
+/* header — wordmark + tagline left, nav, org right, 1px bottom border */
+.site-header {
+  display:flex; align-items:baseline; gap:24px;
+  padding:14px 24px; background:var(--surface); border-bottom:1px solid var(--border);
+}
+.brand { display:flex; align-items:baseline; gap:8px; }
+.wordmark { font-weight:600; font-size:16px; }
+.tagline { color:var(--muted); font-size:12px; }
+.site-nav { display:flex; gap:16px; font-size:13px; }
+.site-nav a { color:var(--muted); }
+.site-nav a:hover { color:var(--ink); text-decoration:none; }
+.site-header .org { margin-left:auto; color:var(--muted); font-size:13px; }
+
+main { max-width:980px; margin:0 auto; padding:24px; }
+
+/* buttons — one primary per region; everything else ghost */
+button, .btn-primary {
+  font:inherit; cursor:pointer; border-radius:var(--radius-sm); padding:8px 14px;
+  border:1px solid var(--border); background:transparent; color:var(--ink);
+}
+button:hover { border-color:var(--muted); }
+.btn-primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.btn-primary:hover { background:#0B5946; border-color:#0B5946; }
+
+/* forms — labels above inputs, subtle focus ring, amber low-confidence flag */
+label { display:block; color:var(--muted); font-size:13px; }
+input, select {
+  font:inherit; width:100%; max-width:420px; padding:7px 10px; margin-top:3px;
+  border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--surface); color:var(--ink);
+}
+input:focus-visible, select:focus-visible {
+  outline:2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset:1px; border-color:var(--accent);
+}
+fieldset { border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin:0 0 16px; }
+legend { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; padding:0 6px; }
+/* Stretch A — low-confidence extracted fields MUST stay visually flagged */
+.low-confidence { border-left:3px solid #F59E0B !important; background:#FFF8E6 !important; }
+
+/* tables */
+table { border-collapse:collapse; width:100%; background:var(--surface); font-size:13px;
+        border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+th, td { padding:8px 12px; border-bottom:1px solid var(--border); text-align:left; }
+thead th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; }
+tbody tr:hover { background:#FAFAF7; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+table form { margin:0; }
+
+/* dashboard board */
+.stat { font-size:20px; font-weight:600; margin:0 0 16px; }
+.board { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.col { background:#F1EFEA; border-radius:var(--radius); padding:12px; }
+.col-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.col-title { font-weight:600; font-size:14px; }
+.col-head .count { background:var(--surface); border:1px solid var(--border); border-radius:999px;
+                   font-size:12px; padding:0 8px; color:var(--muted); }
+.col-sub { margin-left:auto; font-size:13px; color:var(--muted); }
+.card { background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
+        border-radius:var(--radius); padding:16px; margin-bottom:8px; }
+.card:hover { border-color:var(--muted); }
+.card.muted { opacity:.75; }
+.card .c1 { display:flex; align-items:center; gap:8px; }
+.card .job { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card .c2 { display:flex; align-items:center; gap:8px; margin:6px 0; }
+.card .amount { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; }
+.card .c3 { color:var(--muted); font-size:12px; margin-bottom:8px; }
+.card form { margin:0; }
+.chip { margin-left:auto; font-size:12px; font-weight:600; border-radius:999px; padding:2px 8px; }
+.chip-held { background:var(--held-bg); color:var(--held-ink); }
+.chip-released { background:var(--rel-bg); color:var(--rel-ink); }
+.chip-paid { background:var(--paid-bg); color:var(--paid-ink); }
+.pill { margin-left:auto; font-size:12px; color:var(--muted);
+        border:1px solid var(--border); border-radius:999px; padding:1px 8px; }
+.empty { color:var(--muted); font-size:13px; text-align:center; padding:24px 0; }

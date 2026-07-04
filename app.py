@@ -32,6 +32,48 @@ from holdback.split_engine import split_bill  # noqa: E402
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-only-change-me")
 
+_ORG_NAME = None
+
+
+def _org_name() -> str:
+    """Org name for the header, fetched once and cached (retries until connected)."""
+    global _ORG_NAME
+    if _ORG_NAME:
+        return _ORG_NAME
+    try:
+        _ORG_NAME = xero.get_organisation()["Organisations"][0].get("Name", "")
+    except Exception:  # noqa: BLE001
+        return ""
+    return _ORG_NAME
+
+
+def _page(body: str) -> str:
+    """Wrap a body fragment in the full document + site header (one stylesheet)."""
+    return (
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>HoldBack</title><link rel='stylesheet' href='/static/holdback.css'></head>"
+        "<body><header class='site-header'>"
+        "<span class='brand'><span class='wordmark'>HoldBack</span>"
+        "<span class='tagline'>retention &amp; CIS for Xero</span></span>"
+        "<nav class='site-nav'><a href='/new-bill'>New bill</a>"
+        "<a href='/upload'>Contracts</a><a href='/dashboard'>Dashboard</a></nav>"
+        f"<span class='org'>{_org_name()}</span>"
+        f"</header><main>{body}</main></body></html>"
+    )
+
+
+@app.after_request
+def _wrap_html(resp):
+    """Wrap plain HTML fragments in the page shell. Full pages (redirects, already-wrapped
+    responses) and non-HTML (CSS) pass through untouched."""
+    if (resp.content_type or "").startswith("text/html"):
+        body = resp.get_data(as_text=True)
+        head = body[:40].lower()
+        if body and "<!doctype" not in head and "<html" not in head:
+            resp.set_data(_page(body))
+    return resp
+
 
 @app.route("/")
 def index():
@@ -159,11 +201,11 @@ def _confirm_field(label, name, node) -> str:
     conf = node.get("confidence", 0.0) if isinstance(node, dict) else 0.0
     has_value = value not in (None, "")
     amber = has_value and conf < 0.8
-    style = " style='background:#ffe4b5'" if amber else ""
+    cls = " class='low-confidence'" if amber else ""
     badge = f" <small>({int(round(conf * 100))}% confidence)</small>" if has_value else ""
     val = "" if value is None else _esc(value)
     return (f"<p><label>{label}{badge}<br>"
-            f"<input name='{name}' value=\"{val}\"{style} size='40'></label></p>")
+            f"<input name='{name}' value=\"{val}\"{cls}></label></p>")
 
 
 def _render_confirm(terms, note="") -> str:
@@ -353,16 +395,15 @@ def new_bill_create():
         return body, 502
     rows = "".join(
         f"<tr><td>{inv.get('Reference')}</td><td>{inv.get('Status')}</td>"
-        f"<td>&pound;{inv.get('Total')}</td><td>{inv.get('DueDate', '')}</td>"
+        f"<td class='num'>{_money_fmt(inv.get('Total'))}</td>"
+        f"<td>{_parse_xero_date(inv.get('DueDate')) or '&mdash;'}</td>"
         f"<td><code>{inv.get('InvoiceID')}</code></td></tr>"
         for inv in result.get("Invoices", [])
     )
     return f"""
     <h1>Created &check;</h1>
-    <table border=1 cellpadding=4>
-      <tr><th>Reference</th><th>Status</th><th>Total</th><th>Due</th><th>InvoiceID</th></tr>
-      {rows}
-    </table>
+    <table><thead><tr><th>Reference</th><th>Status</th><th class='num'>Total</th>
+      <th>Due</th><th>InvoiceID</th></tr></thead><tbody>{rows}</tbody></table>
     <p>Open Xero &rarr; Business &rarr; Bills to see them. CIS shows on the labour line
     once a bill is approved.</p>
     <p><a href="/dashboard">Retention dashboard</a> &middot;
@@ -433,34 +474,49 @@ def dashboard():
     """Retention across jobs with a lifecycle read from Xero status (DRAFT=Held,
     AUTHORISED=Released, PAID=Paid). Held rows sorted soonest-release-first; total held
     counts DRAFT tranches only."""
-    items = _retention_items()
-    lane_order = {"held": 0, "released": 1, "paid": 2}
-    items.sort(key=lambda i: (lane_order[i["lane"]], i["due"] is None, i["due"] or datetime.date.max))
-    held = [i for i in items if i["lane"] == "held"]
-    total_held = sum(float(i["held"] or 0) for i in held)
-    jobs_held = len({i["name"] for i in held})
+    lanes = {"held": [], "released": [], "paid": []}
+    for i in _retention_items():
+        lanes[i["lane"]].append(i)
+    for lane_items in lanes.values():
+        lane_items.sort(key=lambda i: (i["due"] is None, i["due"] or datetime.date.max))
+    total_held = sum(float(i["held"] or 0) for i in lanes["held"])
+    jobs_held = len({i["name"] for i in lanes["held"]})
 
-    def row(i):
-        action = (
+    def card(i):
+        chip = {"held": "Held", "released": "Released", "paid": "Paid"}[i["lane"]]
+        pill = f"<span class='pill'>tranche {i['tranche']}</span>" if i["tranche"] else ""
+        due = i["due"].strftime("%d %b %Y") if i["due"] else "&mdash;"
+        inv = f" &middot; inv #{i['inv_no']}" if i["inv_no"] else ""
+        button = (
             f"<form method='post' action='/dashboard/approve/{i['id']}' "
             "onsubmit=\"return confirm('Release this retention now? The CIS rate is "
-            "re-checked before approving.')\"><button type='submit'>Release</button></form>"
-        ) if i["lane"] == "held" else "&mdash;"
-        item = "retention" + (f" {i['tranche']}" if i["tranche"] else "")
-        return (f"<tr><td>{i['status_label']}</td><td>{i['name']}</td><td>{item}</td>"
-                f"<td class='num'>{_money_fmt(i['held'])}</td>"
-                f"<td>{i['due'] or '&mdash;'}</td><td>{action}</td></tr>")
+            "re-checked before approving.')\"><button class='btn-primary'>Release</button></form>"
+        ) if i["lane"] == "held" else ""
+        muted = "" if i["lane"] == "held" else " muted"
+        return (
+            f"<article class='card{muted}'>"
+            f"<div class='c1'><span class='job'>{i['name']}</span>"
+            f"<span class='chip chip-{i['lane']}'>{chip}</span></div>"
+            f"<div class='c2'><span class='amount'>{_money_fmt(i['held'])}</span>{pill}</div>"
+            f"<div class='c3'>release due {due}{inv}</div>{button}</article>"
+        )
 
-    rows = "".join(row(i) for i in items) or (
-        "<tr><td colspan='6'>No retention yet. Create some at "
-        "<a href='/new-bill'>/new-bill</a>.</td></tr>")
+    def column(title, lane):
+        cards = "".join(card(i) for i in lanes[lane]) or "<div class='empty'>Nothing here yet</div>"
+        subtotal = sum(float(i["held"] or 0) for i in lanes[lane])
+        return (
+            f"<section class='col'><div class='col-head'><span class='col-title'>{title}</span>"
+            f"<span class='count'>{len(lanes[lane])}</span>"
+            f"<span class='col-sub'>{_money_fmt(subtotal)}</span></div>{cards}</section>"
+        )
+
     return (
-        "<h1>Retention</h1>"
-        f"<p>Currently held: <b>{_money_fmt(total_held)}</b> across <b>{jobs_held}</b> job(s).</p>"
-        "<table border=1 cellpadding=6><thead><tr><th>Status</th><th>Subcontractor</th>"
-        "<th>Item</th><th class='num'>Held</th><th>Release date</th><th>Action</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-        "<p><a href='/'>Home</a> &middot; <a href='/new-bill'>Create bills</a></p>"
+        f"<p class='stat'>Currently held: {_money_fmt(total_held)} across {jobs_held} job(s)</p>"
+        "<div class='board'>"
+        + column("Held", "held")
+        + column("Released &mdash; awaiting payment", "released")
+        + column("Paid", "paid")
+        + "</div>"
     )
 
 
