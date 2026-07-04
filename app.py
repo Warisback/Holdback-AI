@@ -24,7 +24,7 @@ load_dotenv(override=True)  # populate os.environ from .env BEFORE importing the
 # NOTE: .env is read ONCE here at startup. Flask's reloader only watches .py files, so
 # after editing .env you must fully STOP and re-run this process for changes to apply.
 
-from holdback import xero  # noqa: E402
+from holdback import extract, terms_store, xero  # noqa: E402
 from holdback.bills import build_accpay_bills  # noqa: E402
 from holdback.split_engine import split_bill  # noqa: E402
 
@@ -63,7 +63,8 @@ def index():
         f"({org.get('CountryCode')})</p>"
         f"<p><b>Requesting</b> (from .env):<br><code>{requested}</code></p>"
         f"<p><b>Granted</b> (on token):<br><code>{granted}</code></p>{warn}"
-        "<p><a href='/new-bill'>Create bills</a> &middot; "
+        "<p><a href='/upload'>Contract terms (PDF)</a> &middot; "
+        "<a href='/new-bill'>Create bills</a> &middot; "
         "<a href='/dashboard'>Retention dashboard</a> &middot; "
         "<a href='/contacts'>Contacts</a> &middot; "
         "<a href='/accounts'>Accounts</a> &middot; "
@@ -137,6 +138,110 @@ def taxrates():
     )
 
 
+# --- STEP 1: contract-term extraction + editable confirm screen --------------------------
+def _esc(value) -> str:
+    return str(value).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+
+
+def _contact_options(selected=None) -> str:
+    out = []
+    for c in xero.get_contacts().get("Contacts", []):
+        cid = c.get("ContactID")
+        sel = " selected" if cid == selected else ""
+        out.append(f'<option value="{cid}"{sel}>{c.get("Name")}</option>')
+    return "".join(out)
+
+
+def _confirm_field(label, name, node) -> str:
+    """One editable field. Stretch A: amber background when extracted confidence < 0.8."""
+    value = node.get("value") if isinstance(node, dict) else None
+    conf = node.get("confidence", 0.0) if isinstance(node, dict) else 0.0
+    has_value = value not in (None, "")
+    amber = has_value and conf < 0.8
+    style = " style='background:#ffe4b5'" if amber else ""
+    badge = f" <small>({int(round(conf * 100))}% confidence)</small>" if has_value else ""
+    val = "" if value is None else _esc(value)
+    return (f"<p><label>{label}{badge}<br>"
+            f"<input name='{name}' value=\"{val}\"{style} size='40'></label></p>")
+
+
+def _render_confirm(terms, note="") -> str:
+    t1, t2 = terms["trigger1"], terms["trigger2"]
+    note_html = f"<p style='color:#080'>{note}</p>" if note else ""
+    return f"""
+    <h1>Confirm contract terms</h1>
+    <p>Every field is editable. <b>Amber</b> means the extractor wasn't confident &mdash; check it.</p>
+    {note_html}
+    <form method="post" action="/confirm">
+      <p>Job / subcontractor:<br>
+        <select name="contact_id" required>
+          <option value="">-- choose --</option>{_contact_options()}
+        </select></p>
+      {_confirm_field("Retention %", "retention_pct", terms["retention_pct"])}
+      <fieldset><legend>Trigger 1</legend>
+        {_confirm_field("Condition (e.g. practical completion)", "trigger1_condition", t1["condition"])}
+        {_confirm_field("Share of retention released (%)", "trigger1_pct", t1["pct"])}
+        {_confirm_field("Expected release date (YYYY-MM-DD)", "trigger1_date", t1["expected_date"])}
+      </fieldset>
+      <fieldset><legend>Trigger 2 (optional &mdash; leave blank for a single release)</legend>
+        {_confirm_field("Condition", "trigger2_condition", t2["condition"])}
+        {_confirm_field("Share of retention released (%)", "trigger2_pct", t2["pct"])}
+        {_confirm_field("Expected release date (YYYY-MM-DD)", "trigger2_date", t2["expected_date"])}
+      </fieldset>
+      {_confirm_field("Contract value (display only)", "contract_value", terms["contract_value"])}
+      <button type="submit">Save terms</button>
+    </form>
+    <p><a href="/upload">Upload a different PDF</a> &middot; <a href="/">Home</a></p>"""
+
+
+@app.route("/upload", methods=["GET"])
+def upload_form():
+    return """
+    <h1>Add contract terms</h1>
+    <form method="post" action="/upload" enctype="multipart/form-data">
+      <p>Upload the subcontract PDF:
+         <input type="file" name="pdf" accept="application/pdf"></p>
+      <button type="submit">Extract terms</button>
+    </form>
+    <p>&mdash; or &mdash; <a href="/confirm">Skip PDF: enter terms manually</a></p>
+    <p><a href="/">Home</a></p>"""
+
+
+@app.route("/upload", methods=["POST"])
+def upload_extract():
+    file = request.files.get("pdf")
+    text = extract.pdf_text(file) if file else ""
+    # extract_terms never raises: any failure -> empty_terms() -> a blank confirm screen.
+    terms = extract.extract_terms(text)
+    return _render_confirm(terms)
+
+
+@app.route("/confirm", methods=["GET"])
+def confirm_blank():
+    # Manual entry path: same screen, blank fields (no amber — nothing was extracted).
+    return _render_confirm(extract.empty_terms())
+
+
+@app.route("/confirm", methods=["POST"])
+def confirm_save():
+    f = request.form
+    contact_id = f.get("contact_id", "").strip()
+    if not contact_id:
+        return "<p>Please choose a subcontractor.</p><p><a href='/confirm'>Back</a></p>", 400
+    terms_store.save_terms(contact_id, {
+        "retention_pct": f.get("retention_pct", "").strip(),
+        "trigger1_condition": f.get("trigger1_condition", "").strip(),
+        "trigger1_pct": f.get("trigger1_pct", "").strip(),
+        "trigger1_date": f.get("trigger1_date", "").strip(),
+        "trigger2_condition": f.get("trigger2_condition", "").strip(),
+        "trigger2_pct": f.get("trigger2_pct", "").strip(),
+        "trigger2_date": f.get("trigger2_date", "").strip(),
+        "contract_value": f.get("contract_value", "").strip(),
+    })
+    # Flow straight into bill creation with these terms pre-loaded for this job.
+    return redirect(url_for("new_bill_form", contact_id=contact_id))
+
+
 # --- WRITE PATH — runs ONLY on explicit form submit; needs the accounting.invoices scope --
 # These come from the Demo Company (UK) chart of accounts / tax rates:
 #   321 "CIS Labour Expense"      -> Xero applies the CIS deduction to labour coded here
@@ -149,15 +254,23 @@ VAT_TAX_TYPE = "INPUT2"
 
 @app.route("/new-bill", methods=["GET"])
 def new_bill_form():
+    selected = request.args.get("contact_id", "")
+    stored = terms_store.get_terms(selected) if selected else None
     options = "".join(
-        f'<option value="{c.get("ContactID")}">{c.get("Name")}</option>'
+        f'<option value="{c.get("ContactID")}"'
+        f'{" selected" if c.get("ContactID") == selected else ""}>{c.get("Name")}</option>'
         for c in xero.get_contacts().get("Contacts", [])
     )
     today = datetime.date.today().isoformat()
-    release = (datetime.date.today() + datetime.timedelta(days=180)).isoformat()
+    default_release = (datetime.date.today() + datetime.timedelta(days=180)).isoformat()
+    retention_val = (stored or {}).get("retention_pct") or "5"
+    release_val = (stored or {}).get("trigger1_date") or default_release
+    note = ("<p style='color:#080'>Loaded saved terms for this job &mdash; fields still "
+            "overridable.</p>") if stored else ""
     return f"""
     <h1>Create HoldBack bills</h1>
     <p>Splits one subcontractor bill into a pay-now bill + a DRAFT retention bill.</p>
+    {note}
     <form method="post">
       <p>Subcontractor (pick the one set up as a CIS subcontractor):<br>
         <select name="contact_id" required>
@@ -166,16 +279,17 @@ def new_bill_form():
       <p>Total &pound;<input name="total" value="1500.00" size="10">
          = Labour &pound;<input name="labour" value="1000.00" size="10">
          + Materials &pound;<input name="materials" value="500.00" size="10"></p>
-      <p>Retention <input name="retention_pct" value="5" size="3">%</p>
+      <p>Retention <input name="retention_pct" value="{retention_val}" size="3">%</p>
       <p>Bill date <input name="date" value="{today}" size="12">
-         &nbsp; Retention release date <input name="retention_due_date" value="{release}" size="12"></p>
+         &nbsp; Retention release date <input name="retention_due_date" value="{release_val}" size="12"></p>
       <p>Pay-now bill:
         <label><input type="radio" name="pay_now_status" value="DRAFT" checked>
           Draft (review &amp; approve by hand)</label>
         <label><input type="radio" name="pay_now_status" value="AUTHORISED">
           Approve now</label></p>
       <button type="submit">Create bills in Xero</button>
-    </form>"""
+    </form>
+    <p><a href="/upload">Set contract terms from a PDF</a> &middot; <a href="/">Home</a></p>"""
 
 
 @app.route("/new-bill", methods=["POST"])

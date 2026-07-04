@@ -331,3 +331,24 @@ BOUNTY-01 ADDITIONS (do not reorder core priorities):
   Stretch A → Stretch B. Stop there.
 ```
 </details>
+
+---
+
+## ROADMAP — named, not built
+
+**v1.1** (post `demo-safe` tag, if time = step 6): edit-terms — confirm screen prefilled
+from stored terms; saves apply to FUTURE invoices only (per-invoice architecture, nothing
+historical rewinds); zero split-engine contact, no new fixtures needed.
+
+**v2** (post-event; each engine-touching item requires new hand-calculated fixtures BEFORE
+code — rule 7):
+- Retention caps ("stop withholding at £X") — cumulative per-job state
+- NEC retention-free thresholds
+- Labour-only retention variant
+- N>2 release tranches — splitter already list-based; lift the guard + 1 fixture
+- Partial/adjusted release (edit draft before approval, e.g. deducting defect-remedy costs)
+- Sectional completion (workaround today: one job per section)
+
+**v2** (non-engine):
+- In-app payment recording (accounting.payments scope) — currently read-only from Xero status by design
+- Domestic reverse charge VAT (already scoped out)
