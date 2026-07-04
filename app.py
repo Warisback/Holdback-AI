@@ -380,48 +380,86 @@ def _parse_xero_date(value):
     return (datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=ms)).date()
 
 
-@app.route("/dashboard")
-def dashboard():
-    """Retention currently held across jobs, sorted by release date (soonest first)."""
-    data = xero.get_bills(where='Type=="ACCPAY" AND Status=="DRAFT"')
+# Lifecycle lanes derived from Xero's own Status (we never store status ourselves).
+_STATUS_LANE = {
+    "DRAFT": ("Held", "held"),
+    "AUTHORISED": ("Released — awaiting payment", "released"),
+    "PAID": ("Paid", "paid"),
+}
+
+
+def _money_fmt(value) -> str:
+    """£1,234.56 with thousands separators (tabular alignment handled in CSS)."""
+    try:
+        return f"£{Decimal(str(value)):,.2f}"
+    except Exception:  # noqa: BLE001
+        return f"£{value}"
+
+
+def _tranche_label(ref: str) -> str:
+    m = re.search(r"retention\s+(\d+/\d+)", ref or "", re.I)
+    return m.group(1) if m else ""
+
+
+def _retention_items():
+    """All HoldBack retention bills across statuses, each with a derived lifecycle lane."""
+    data = xero.get_bills(where='Type=="ACCPAY"')
     items = []
     for inv in data.get("Invoices", []):
         ref = inv.get("Reference") or ""
-        # A retention bill is one we tagged "(retention)"; also catch the earlier
-        # bills that were tagged plain "HoldBack" but carry a release due-date.
         is_retention = "retention" in ref.lower() or (
             ref.strip() == "HoldBack" and bool(inv.get("DueDate"))
         )
         if not is_retention:
+            continue
+        lane = _STATUS_LANE.get(inv.get("Status"))
+        if not lane:  # skip VOIDED / DELETED
             continue
         items.append({
             "id": inv.get("InvoiceID"),
             "name": (inv.get("Contact") or {}).get("Name", "?"),
             "held": inv.get("Total"),
             "due": _parse_xero_date(inv.get("DueDate")),
-            "ref": ref,
+            "inv_no": inv.get("InvoiceNumber") or "",
+            "tranche": _tranche_label(ref),
+            "status_label": lane[0],
+            "lane": lane[1],
         })
-    items.sort(key=lambda r: (r["due"] is None, r["due"] or datetime.date.max))
-    total_held = sum(float(i["held"] or 0) for i in items)
-    rows = "".join(
-        f"<tr><td>{i['name']}</td><td>{i['due'] or '&mdash;'}</td><td>&pound;{i['held']}</td>"
-        f"<td>{i['ref']}</td><td>"
-        f"<form method='post' action='/dashboard/approve/{i['id']}' "
-        "onsubmit=\"return confirm('Release this retention now? The CIS rate is re-checked "
-        "before approving.')\"><button type='submit'>Release (approve)</button></form>"
-        "</td></tr>"
-        for i in items
-    )
-    if not rows:
-        rows = ("<tr><td colspan='5'>No retention currently held. "
-                "Create some at <a href='/new-bill'>/new-bill</a>.</td></tr>")
+    return items
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Retention across jobs with a lifecycle read from Xero status (DRAFT=Held,
+    AUTHORISED=Released, PAID=Paid). Held rows sorted soonest-release-first; total held
+    counts DRAFT tranches only."""
+    items = _retention_items()
+    lane_order = {"held": 0, "released": 1, "paid": 2}
+    items.sort(key=lambda i: (lane_order[i["lane"]], i["due"] is None, i["due"] or datetime.date.max))
+    held = [i for i in items if i["lane"] == "held"]
+    total_held = sum(float(i["held"] or 0) for i in held)
+    jobs_held = len({i["name"] for i in held})
+
+    def row(i):
+        action = (
+            f"<form method='post' action='/dashboard/approve/{i['id']}' "
+            "onsubmit=\"return confirm('Release this retention now? The CIS rate is "
+            "re-checked before approving.')\"><button type='submit'>Release</button></form>"
+        ) if i["lane"] == "held" else "&mdash;"
+        item = "retention" + (f" {i['tranche']}" if i["tranche"] else "")
+        return (f"<tr><td>{i['status_label']}</td><td>{i['name']}</td><td>{item}</td>"
+                f"<td class='num'>{_money_fmt(i['held'])}</td>"
+                f"<td>{i['due'] or '&mdash;'}</td><td>{action}</td></tr>")
+
+    rows = "".join(row(i) for i in items) or (
+        "<tr><td colspan='6'>No retention yet. Create some at "
+        "<a href='/new-bill'>/new-bill</a>.</td></tr>")
     return (
-        "<h1>Retention held</h1>"
-        f"<p>Across <b>{len(items)}</b> job(s), total held: <b>&pound;{total_held:.2f}</b> "
-        "(incl VAT).</p>"
-        "<table border=1 cellpadding=6><tr><th>Subcontractor</th><th>Release date</th>"
-        "<th>Held</th><th>Ref</th><th>Action</th></tr>"
-        f"{rows}</table>"
+        "<h1>Retention</h1>"
+        f"<p>Currently held: <b>{_money_fmt(total_held)}</b> across <b>{jobs_held}</b> job(s).</p>"
+        "<table border=1 cellpadding=6><thead><tr><th>Status</th><th>Subcontractor</th>"
+        "<th>Item</th><th class='num'>Held</th><th>Release date</th><th>Action</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
         "<p><a href='/'>Home</a> &middot; <a href='/new-bill'>Create bills</a></p>"
     )
 
