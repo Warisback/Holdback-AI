@@ -1,34 +1,33 @@
 # PROGRESS — HoldBack session bridge
 
-CURRENT MILESTONE: split engine green + all 3 ground-truth fixtures GREEN (user sent
-NUMBERS CONFIRMED). OAuth OK (Demo Company connected, reads working). ACCPAY bill
-payload builder (holdback/bills.py) written + tested, but NOT yet POSTed to Xero.
+CURRENT MILESTONE: OAuth OK + all 3 ground-truth fixtures GREEN (NUMBERS CONFIRMED).
+Write path wired (holdback/xero.create_bills + /new-bill form) but NO live bill created
+yet. Org codes captured from the live Demo Company.
 
-TESTS: 27 passed, 0 skipped. The engine reproduces all 3 hand-calculated fixtures
-exactly, including the tie-break (5.005->5.00, 2.515->2.51). No fixture deltas.
+TESTS: 27 passed, 0 skipped. Engine matches all 3 fixtures exactly incl. tie-break.
+
+ORG VALUES (Demo Company UK, confirmed from /accounts + /taxrates):
+- CIS Labour Expense account = 321 (Xero applies CIS here)
+- CIS Materials Purchased account = 322 (materials, excluded from CIS)
+- VAT TaxType = INPUT2 ("20% (VAT on Expenses)", ACTIVE)
 
 OPEN QUESTIONS (escalate exactly as written):
-1. Before the first live write, fetch from the live org (reads only, scope already held;
-   routes added): CIS Labour Expense account code + materials expense account code
-   (/accounts), the exact 20% VAT-on-expenses TaxType (/taxrates), one CIS-subcontractor
-   ContactID (/contacts), and the raw CISSettings JSON (/cis/<id>) — echo its field names
-   before relying on them.
-2. "Pay-now bill: create AUTHORISED now (fixes CIS at today's rate) or DRAFT so you can
-   eyeball it in Xero and approve by hand?" Coded default = AUTHORISED. Retention bill is
-   ALWAYS DRAFT until release regardless.
+1. "Which contact is set up as a CIS SUBCONTRACTOR (in that contact's CIS Settings)?"
+   Xero only applies the deduction if the bill's contact is flagged as a subcontractor.
+   Org-level contractor mode is on, but a specific subcontractor contact must exist.
+   (CISSettings field names still to be echoed via /cis/<id> once we know the contact.)
+2. "Pay-now bill on first write: DRAFT (review then approve) or AUTHORISED now?"
+   Form default = DRAFT.
 
 DECISIONS MADE THIS SESSION:
-- Half-penny tie-break = ROUND_HALF_DOWN (Option B, accountant-CONFIRMED). See
-  holdback/split_engine.py "RESOLVED TIE-BREAK".
-- Pay-now labour is the reconciliation plug; all rounding residue lands there.
-- All 3 ground-truth fixtures match the engine exactly (NUMBERS CONFIRMED).
-- Bill payloads: Type=ACCPAY, LineAmountTypes=Exclusive, labour->CIS account,
-  materials->normal account, one VAT TaxType/line. NO CIS line (Xero deducts at approval).
-  Pay-now default AUTHORISED; retention always DRAFT + due-dated to release.
-- UnitAmount sent as 2dp string; flip to float only if Xero rejects on first write.
-- Xero via direct HTTP (no MCP). Scopes granular-only: reads = settings.read +
-  contacts.read; writes = accounting.invoices (add at write step, triggers re-consent).
+- Half-penny tie-break = ROUND_HALF_DOWN (Option B, accountant-CONFIRMED).
+- Pay-now labour is the reconciliation plug; residue lands there.
+- All 3 ground-truth fixtures match exactly (NUMBERS CONFIRMED).
+- Bills: Type=ACCPAY, Exclusive, labour->321, materials->322, TaxType INPUT2, NO CIS
+  line (Xero deducts at approval). Retention always DRAFT + due-dated; pay-now default DRAFT.
+- UnitAmount sent as 2dp string; flip to float only if Xero rejects.
+- Scopes granular-only; writes need accounting.invoices (add + reconnect before first write).
 
-NEXT STEP: first live write. User: (a) add accounting.invoices to XERO_SCOPES + reconnect;
-(b) paste /accounts + /taxrates + a ContactID + /cis/<id> output. Then I wire the POST and
-create the two bills (pay-now + draft retention) for one candidate and we verify in Xero.
+NEXT STEP: first live write. User: (a) add accounting.invoices to XERO_SCOPES, restart app,
+reconnect; (b) confirm which contact is the CIS subcontractor; (c) open /new-bill, pick that
+contact, leave Candidate 1 prefilled, click Create. Then verify the two bills in Xero.

@@ -198,6 +198,30 @@ def get_tax_rates() -> dict:
     return api_get("TaxRates")
 
 
+# --- WRITE (requires the accounting.invoices scope; only called on explicit user action) --
+def create_bills(invoices: list[dict]) -> dict:
+    """POST one or more ACCPAY bills to the Invoices endpoint.
+
+    This is the ONLY write in the codebase. It runs only when the user submits the
+    /new-bill form (post-"NUMBERS CONFIRMED"). On error we surface Xero's raw response
+    body so scope/validation problems are obvious during the build.
+    """
+    resp = requests.post(
+        f"{API_BASE}/Invoices",
+        headers={
+            "Authorization": f"Bearer {get_access_token()}",
+            "Xero-tenant-id": tenant_id(),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        json={"Invoices": invoices},
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Xero {resp.status_code}: {resp.text}")
+    return resp.json()
+
+
 def get_contact_cis_settings(contact_id: str) -> dict:
     """LIVE read of a contact's CIS settings (never cached). Returns the raw JSON so we
     can echo the exact field names before relying on them (CLAUDE.md API-specifics)."""

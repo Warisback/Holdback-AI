@@ -11,6 +11,7 @@ Run:
 until the numbers are confirmed ("NUMBERS CONFIRMED") and the write module is built.
 """
 
+import datetime
 import json
 import os
 import secrets
@@ -23,6 +24,8 @@ load_dotenv(override=True)  # populate os.environ from .env BEFORE importing the
 # after editing .env you must fully STOP and re-run this process for changes to apply.
 
 from holdback import xero  # noqa: E402
+from holdback.bills import build_accpay_bills  # noqa: E402
+from holdback.split_engine import split_bill  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-only-change-me")
@@ -113,6 +116,86 @@ def taxrates():
         "<tr><th>Name</th><th>TaxType</th><th>Rate</th><th>Status</th></tr>"
         f"{rows}</table>"
     )
+
+
+# --- WRITE PATH — runs ONLY on explicit form submit; needs the accounting.invoices scope --
+# These come from the Demo Company (UK) chart of accounts / tax rates:
+#   321 "CIS Labour Expense"      -> Xero applies the CIS deduction to labour coded here
+#   322 "CIS Materials Purchased" -> materials, excluded from the CIS deduction
+#   INPUT2 = "20% (VAT on Expenses)"
+CIS_LABOUR_ACCOUNT = "321"
+MATERIALS_ACCOUNT = "322"
+VAT_TAX_TYPE = "INPUT2"
+
+
+@app.route("/new-bill", methods=["GET"])
+def new_bill_form():
+    options = "".join(
+        f'<option value="{c.get("ContactID")}">{c.get("Name")}</option>'
+        for c in xero.get_contacts().get("Contacts", [])
+    )
+    today = datetime.date.today().isoformat()
+    release = (datetime.date.today() + datetime.timedelta(days=180)).isoformat()
+    return f"""
+    <h1>Create HoldBack bills</h1>
+    <p>Splits one subcontractor bill into a pay-now bill + a DRAFT retention bill.</p>
+    <form method="post">
+      <p>Subcontractor (pick the one set up as a CIS subcontractor):<br>
+        <select name="contact_id" required>
+          <option value="">-- choose --</option>{options}
+        </select></p>
+      <p>Total &pound;<input name="total" value="1500.00" size="10">
+         = Labour &pound;<input name="labour" value="1000.00" size="10">
+         + Materials &pound;<input name="materials" value="500.00" size="10"></p>
+      <p>Retention <input name="retention_pct" value="5" size="3">%</p>
+      <p>Bill date <input name="date" value="{today}" size="12">
+         &nbsp; Retention release date <input name="retention_due_date" value="{release}" size="12"></p>
+      <p>Pay-now bill:
+        <label><input type="radio" name="pay_now_status" value="DRAFT" checked>
+          Draft (review &amp; approve by hand)</label>
+        <label><input type="radio" name="pay_now_status" value="AUTHORISED">
+          Approve now</label></p>
+      <button type="submit">Create bills in Xero</button>
+    </form>"""
+
+
+@app.route("/new-bill", methods=["POST"])
+def new_bill_create():
+    f = request.form
+    split = split_bill(f["total"], f["labour"], f["materials"], f["retention_pct"])
+    payloads = build_accpay_bills(
+        split,
+        contact_id=f["contact_id"],
+        date=f["date"],
+        retention_due_date=f["retention_due_date"],
+        cis_labour_account_code=CIS_LABOUR_ACCOUNT,
+        materials_account_code=MATERIALS_ACCOUNT,
+        vat_tax_type=VAT_TAX_TYPE,
+        pay_now_status=f["pay_now_status"],
+        reference="HoldBack",
+    )
+    to_create = [payloads["pay_now"]]
+    if payloads["retention"]:
+        to_create.append(payloads["retention"])
+    try:
+        result = xero.create_bills(to_create)
+    except Exception as exc:  # noqa: BLE001 - show Xero's raw validation error during the build
+        return f"<h1>Create failed</h1><pre>{exc}</pre><p><a href='/new-bill'>Back</a></p>", 502
+    rows = "".join(
+        f"<tr><td>{inv.get('Type')}</td><td>{inv.get('InvoiceNumber')}</td>"
+        f"<td>{inv.get('Status')}</td><td>{inv.get('Total')}</td>"
+        f"<td>{inv.get('DueDate', '')}</td><td><code>{inv.get('InvoiceID')}</code></td></tr>"
+        for inv in result.get("Invoices", [])
+    )
+    return f"""
+    <h1>Created &check;</h1>
+    <table border=1 cellpadding=4>
+      <tr><th>Type</th><th>No.</th><th>Status</th><th>Total</th><th>Due</th><th>InvoiceID</th></tr>
+      {rows}
+    </table>
+    <p>Open Xero &rarr; Business &rarr; Bills to see them. The CIS deduction shows on the
+    labour line once the pay-now bill is approved.</p>
+    <p><a href="/new-bill">Create another</a></p>"""
 
 
 if __name__ == "__main__":
