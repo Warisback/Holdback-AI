@@ -128,9 +128,14 @@ a.btn { display:inline-block; }
 .bar-x.faint { color:#A8B0C2; font-weight:400; }
 
 .releases { background:#fff; border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
-.releases-head { padding:11px 18px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:8px; }
+.releases-head { padding:11px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center;
+                 justify-content:space-between; flex-wrap:wrap; gap:10px; }
 .releases-h { font-size:12px; font-weight:600; color:var(--ink); }
-.releases-sub { font-size:11.5px; color:var(--muted2); }
+.releases-filters { display:flex; gap:3px; flex-wrap:wrap; }
+.rfilter { font-size:11.5px; color:var(--muted); padding:3px 10px; border-radius:999px;
+           border:1px solid transparent; white-space:nowrap; }
+.rfilter:hover { color:var(--ink); background:var(--hover); }
+.rfilter.active { color:var(--blue); background:#EEF3FE; border-color:var(--rel-border); font-weight:600; }
 .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .rel-row { display:grid; grid-template-columns:130px minmax(220px,1.4fr) 118px 70px 96px 120px 100px;
            align-items:center; padding:0 18px; border-bottom:1px solid var(--rowline); min-width:760px; }
@@ -150,6 +155,18 @@ a.btn { display:inline-block; }
            border-radius:6px; padding:4px 12px; cursor:pointer; }
 .btn-rel:hover { background:#EFF4FF; border-color:var(--blue); }
 .rel-empty { padding:22px; text-align:center; color:var(--muted2); font-size:13px; }
+/* column-header row (labels double as sort controls) */
+.rel-head, .rel-head:hover { background:#FAFBFD; }
+.rh { padding:9px 0; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--muted2); }
+.rh-r { text-align:right; }
+.rh-sort { color:var(--muted2); }
+.rh-sort:hover { color:var(--ink); }
+.rh-sort.active { color:var(--blue); }
+/* per-row lifecycle badge (shown instead of the Release button once released/paid) */
+.rel-pill { display:inline-block; font-size:10px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+            padding:3px 9px; border-radius:999px; white-space:nowrap; }
+.rel-pill.await { color:var(--rel); background:#EEF3FE; }
+.rel-pill.paid { color:var(--paid); background:#E7F5EF; }
 
 /* ---- forms ---- */
 .form { max-width:680px; }

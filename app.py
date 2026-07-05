@@ -618,30 +618,86 @@ def dashboard():
         f"<div class='chart'>{bars}</div><div class='chart-x'>{xlabels}</div></div>"
     )
 
+    # ---- table: status filter + sort, both server-side via query params (no JS) ----
+    status = request.args.get("status", "held")
+    if status not in ("held", "released", "paid", "all"):
+        status = "held"
+    sort = request.args.get("sort", "due")
+    if sort not in ("due", "name", "amount"):
+        sort = "due"
+    default_dir = {"due": "asc", "name": "asc", "amount": "desc"}
+    direction = request.args.get("dir", "")
+    if direction not in ("asc", "desc"):
+        direction = default_dir[sort]
+
+    display = (lanes["held"] + lanes["released"] + lanes["paid"]) if status == "all" else list(lanes[status])
+    rev = direction == "desc"
+    if sort == "amount":
+        display.sort(key=lambda i: float(i["held"] or 0), reverse=rev)
+    elif sort == "name":
+        display.sort(key=lambda i: (i["name"] or "").lower(), reverse=rev)
+    else:  # due date; rows with no date always sink to the bottom regardless of direction
+        dated = sorted((i for i in display if i["due"]), key=lambda i: i["due"], reverse=rev)
+        display = dated + [i for i in display if not i["due"]]
+
+    chips = "".join(
+        f"<a class='rfilter{' active' if status == key else ''}' "
+        f"href='/dashboard?status={key}&sort={sort}&dir={direction}'>{esc(label)}</a>"
+        for key, label in (("held", "Held"), ("released", "Awaiting payment"),
+                           ("paid", "Paid"), ("all", "All")))
+
+    def hcell(label, key=None, cls=""):
+        if key is None:  # plain, non-sortable label
+            return f"<div class='rh {cls}'>{esc(label)}</div>"
+        if sort == key:  # active column: clicking it flips the direction
+            nd, arrow, act = ("desc" if direction == "asc" else "asc"), (" ↑" if direction == "asc" else " ↓"), " active"
+        else:
+            nd, arrow, act = default_dir[key], "", ""
+        return (f"<div class='rh {cls}'><a class='rh-sort{act}' "
+                f"href='/dashboard?status={status}&sort={key}&dir={nd}'>{esc(label)}{arrow}</a></div>")
+
+    header = ("<div class='rel-row rel-head'>"
+              + hcell("Release date", "due") + hcell("Subcontractor", "name")
+              + hcell("Bill") + hcell("Tranche") + hcell("Due in")
+              + hcell("Amount", "amount", "rh-r") + hcell("", None, "rh-r") + "</div>")
+
     def row(i):
         d = i["due"]
         days = (d - today).days if d else None
         due_cls = " due-soon" if (days is not None and 0 <= days <= 30) else ""
         due_txt = d.strftime("%d %b %Y") if d else "no date"
-        indays = "" if days is None else ("overdue" if days < 0 else "today" if days == 0 else f"in {days} days")
+        # countdown is only meaningful while the retention is still held
+        indays = "" if (i["lane"] != "held" or days is None) else (
+            "overdue" if days < 0 else "today" if days == 0 else f"in {days} days")
         inv_txt = esc(i["inv_no"]) if i["inv_no"] else "Open in Xero"
-        rel = (f"<form method='post' action='/dashboard/approve/{i['id']}' "
-               "onsubmit=\"return confirm('Release this retention now? HoldBack will change the "
-               "bill from Draft to Authorised in Xero.')\"><button class='btn-rel'>Release</button></form>")
+        tr_txt = esc(i["tranche"]) if i["tranche"] else "Full"
+        if i["lane"] == "held":
+            act = (f"<form method='post' action='/dashboard/approve/{i['id']}' "
+                   "onsubmit=\"return confirm('Release this retention now? HoldBack will change the "
+                   "bill from Draft to Authorised in Xero.')\"><button class='btn-rel'>Release</button></form>")
+        elif i["lane"] == "released":
+            act = "<span class='rel-pill await'>Awaiting payment</span>"
+        else:
+            act = "<span class='rel-pill paid'>Paid</span>"
         return (
             "<div class='rel-row'>"
             f"<div class='rel-due{due_cls}'>{due_txt}</div>"
             f"<div class='rel-name'>{esc(i['name'])}</div>"
             f"<div><a class='rel-inv' href='{_xero_link(i['id'])}' target='_blank' rel='noopener'>{inv_txt} ↗</a></div>"
-            f"<div class='rel-tr'>{esc(i['tranche'])}</div>"
+            f"<div class='rel-tr'>{tr_txt}</div>"
             f"<div class='rel-days'>{indays}</div>"
             f"<div class='rel-amt'>{_money_fmt(i['held'])}</div>"
-            f"<div class='rel-act'>{rel}</div></div>"
+            f"<div class='rel-act'>{act}</div></div>"
         )
-    body = "".join(row(i) for i in held) or "<div class='rel-empty'>No retention currently held.</div>"
+    empty_msg = {"held": "No retention currently held.",
+                 "released": "Nothing awaiting payment.",
+                 "paid": "Nothing paid yet.",
+                 "all": "No retention bills yet."}[status]
+    body = (header + "".join(row(i) for i in display)) if display else f"<div class='rel-empty'>{empty_msg}</div>"
     releases = (
-        "<div class='releases'><div class='releases-head'><span class='releases-h'>Upcoming releases</span>"
-        "<span class='releases-sub'>soonest first, held only</span></div>"
+        "<div class='releases'><div class='releases-head'>"
+        "<span class='releases-h'>Retention releases</span>"
+        f"<div class='releases-filters'>{chips}</div></div>"
         f"<div class='table-wrap'>{body}</div></div>"
     )
     return f"<div class='dash'><div class='dash-row1'>{kpi}{chart}</div>{releases}</div>"
