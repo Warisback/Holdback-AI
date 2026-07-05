@@ -189,19 +189,6 @@ tbody tr:hover { background:var(--hover); }
 td.num, th.num { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
 table form { margin:0; }
 
-/* ---- reminders cards ---- */
-.card { background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 1px 2px rgba(14,27,51,.05);
-        padding:14px 16px; display:flex; flex-direction:column; gap:10px; margin-bottom:10px; max-width:760px; }
-.card-top { display:flex; align-items:center; gap:11px; }
-.card-name { font-size:13.5px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.card-sub { font-size:12px; color:var(--muted); margin-top:1px; }
-.card-amt { margin-left:auto; font:700 15.5px var(--serif); color:var(--ink); white-space:nowrap; }
-.card-meta { display:flex; align-items:center; gap:8px; }
-.rem-sched { display:flex; gap:6px; flex-wrap:wrap; }
-.rem-chip { font:11px var(--mono); color:var(--muted); background:#EDF0F6; border:1px solid #E0E5EE; border-radius:5px; padding:2px 8px; }
-.rem-chip.due { background:#DBEAFE; color:var(--rel); border-color:#BBD3FB; font-weight:600; }
-.rem-send { margin-left:auto; padding:7px 14px; font-size:12.5px; }
-
 @media (max-width:960px) {
   .home-grid { grid-template-columns:1fr; gap:32px; padding:40px 20px 32px; }
 }
