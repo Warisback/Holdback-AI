@@ -15,13 +15,15 @@ DONE:
   "(retention 1/2)"/"(2/2)" or "(retention)". Fixtures T1/T2 + composition C1 locked.
 - STEP 3: /dashboard lifecycle from Xero status (DRAFT=Held, AUTHORISED=Released,
   PAID=Paid); "held £X across N jobs" = DRAFT tranches only.
-- STEP 5 + REDESIGN: static/holdback.css now uses the Claude editorial design language
-  (cream canvas, coral primary, serif display via Cormorant Garamond + Inter). App shell
-  is a Jira-style LEFT SIDEBAR (Dashboard/New bill/Contracts/Contacts) + content area,
-  wrapped site-wide via after_request. Dashboard = 3-column board (Held/Released/Paid)
-  with cards, chips, tranche pills, page-head + primary action. Home = clean overview
-  tiles (scopes moved to small diagnostics). Money £1,234.56 tabular; amber low-confidence
-  survives (3px left-border + tint). Fonts load from Google Fonts CDN with system fallbacks.
+- UI v2 (imported from Claude Design "HoldBack UI v2.dc.html" — the .dc bundle was
+  extracted locally since the design MCP needs interactive /design-login). Theme = blue
+  issue-tracker: NAVY TOP APP BAR (Hold[Back] wordmark + tabs Dashboard/New bill/Contracts/
+  CIS return/Forecast/Contacts + org dot) via after_request; dashboard has a navy HERO
+  stat band (Currently held / Released / Paid / Next release due) + 3-col board with
+  lozenge headers, white cards, monogram avatars, tranche lozenges, INV→Xero link, blue
+  Release button. Fonts: Instrument Sans + Space Grotesk (display) + JetBrains Mono
+  (numbers) from Google Fonts (fallbacks). Home = centered logo + dashed PDF dropzone.
+  Amber low-confidence flag preserved. Primary blue #2563EB, navy #0E1B33.
 
 FEATURES (stand-out set, all wired + rendering):
 - CIS monthly return (/cis-return) grouped per subcontractor (labour/materials/CIS deducted)
