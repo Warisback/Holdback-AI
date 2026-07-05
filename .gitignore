@@ -220,3 +220,7 @@ __marimo__/
 # HoldBack — local secrets / OAuth tokens / stored contract terms (never commit)
 token_store.json
 terms_store.json
+
+# Claude Design exports + extracted references (large, not needed at runtime)
+HoldBack *.html
+design/
