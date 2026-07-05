@@ -31,6 +31,12 @@ KEY DECISIONS:
   params (?status=&sort=&dir=), no JS. Headers label every column; released/paid rows show a
   status pill instead of the Release button; "Due in" only populates while held; undated rows
   always sort last. Bare /dashboard is unchanged (held, soonest first).
+- Dashboard urgency layer (surfaces "it alerts you", not just tracks): KPI action stats
+  "Ready to claim" (held + overdue/today, red) and "Due in 30 days" (held + <=30d, amber);
+  a "Needs attention" filter chip (that union, with a live count); and free-text search
+  (?q=) matching subcontractor name or bill number. All server-side, compose with each other
+  via a qs() link helper. Deliberately NOT built: red-highlighted rows, top banner, nav badge.
+  NOTE: action stats read live dates, so they show £0 until a release falls within 30 days.
 - Nav = New bill / Dashboard / CIS return; tagline removed; content centered per page
   (home 1120 / dashboard+wide 1280 / forms 720); copy has zero em-dashes (verified).
 - Reminders feature removed entirely (page, /reminders route, nav tab, mailto drip): the

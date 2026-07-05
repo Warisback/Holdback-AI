@@ -112,6 +112,7 @@ a.btn { display:inline-block; }
 .kpi-split { display:grid; grid-template-columns:1fr 1fr; gap:10px; border-top:1px solid var(--line2); padding-top:12px; }
 .kpi-num { font:600 14px var(--mono); margin-top:3px; }
 .kpi-num.rel { color:var(--rel); } .kpi-num.paid { color:var(--paid); }
+.kpi-num.act-now { color:#B4342B; } .kpi-num.act-soon { color:var(--amber-due); }
 .kpi-next { border-top:1px solid var(--line2); padding-top:12px; }
 .kpi-nextv { font:600 17px var(--serif); color:var(--ink); margin-top:3px; }
 .chart-card { background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:16px 18px 12px; }
@@ -131,11 +132,22 @@ a.btn { display:inline-block; }
 .releases-head { padding:11px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center;
                  justify-content:space-between; flex-wrap:wrap; gap:10px; }
 .releases-h { font-size:12px; font-weight:600; color:var(--ink); }
+.releases-tools { display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; justify-content:flex-end; }
+.rel-search { display:flex; margin:0; }
+.rel-q { font:13px var(--sans); color:var(--ink); background:#fff; border:1px solid var(--field);
+         border-radius:7px 0 0 7px; padding:5px 10px; width:230px; max-width:52vw; outline:none; }
+.rel-q:focus { border-color:var(--blue); }
+.rel-qbtn { font:600 12px var(--sans); color:#fff; background:var(--blue); border:1px solid var(--blue);
+            border-left:none; border-radius:0 7px 7px 0; padding:5px 13px; cursor:pointer; }
+.rel-qbtn:hover { background:var(--blue-dark); }
+.rel-qclear { font-size:11.5px; color:var(--muted); }
+.rel-qclear:hover { color:var(--ink); }
 .releases-filters { display:flex; gap:3px; flex-wrap:wrap; }
 .rfilter { font-size:11.5px; color:var(--muted); padding:3px 10px; border-radius:999px;
            border:1px solid transparent; white-space:nowrap; }
 .rfilter:hover { color:var(--ink); background:var(--hover); }
 .rfilter.active { color:var(--blue); background:#EEF3FE; border-color:var(--rel-border); font-weight:600; }
+.rfilter.attn:not(.active) { color:#B4342B; }
 .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .rel-row { display:grid; grid-template-columns:130px minmax(220px,1.4fr) 118px 70px 96px 120px 100px;
            align-items:center; padding:0 18px; border-bottom:1px solid var(--rowline); min-width:760px; }
