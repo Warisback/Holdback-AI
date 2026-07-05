@@ -48,12 +48,12 @@ def _org_name() -> str:
 
 
 def _page(body: str) -> str:
-    """Wrap a body fragment in the app shell: sticky left sidebar + content area."""
+    """Wrap a body fragment in the app shell: navy top app bar + centered content."""
     path = request.path
 
     def nav(href, label):
-        active = " active" if path == href or (href != "/" and path.startswith(href)) else ""
-        return f"<a class='nav-item{active}' href='{href}'>{label}</a>"
+        cls = " class='active'" if (path == href or (href != "/" and path.startswith(href))) else ""
+        return f"<a href='{href}'{cls}>{label}</a>"
 
     org = _org_name()
     return (
@@ -63,18 +63,19 @@ def _page(body: str) -> str:
         "<link rel='preconnect' href='https://fonts.googleapis.com'>"
         "<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link rel='stylesheet' href='https://fonts.googleapis.com/css2?"
-        "family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap'>"
-        "<link rel='stylesheet' href='/static/holdback.css'></head><body><div class='app'>"
-        "<aside class='sidebar'>"
-        "<div class='brand'><span class='logomark'>H</span><span class='wordmark'>HoldBack</span></div>"
-        "<div class='tagline'>Retention &amp; CIS for Xero</div><nav>"
+        "family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&"
+        "family=JetBrains+Mono:wght@400;500;600;700&display=swap'>"
+        "<link rel='stylesheet' href='/static/holdback.css'></head><body>"
+        "<div class='appbar'><div class='appbar-inner'>"
+        "<a class='brand' href='/'><span class='wm'>Hold<b>Back</b></span>"
+        "<span class='tag'>retention &amp; CIS for Xero</span></a><nav>"
         + nav("/dashboard", "Dashboard") + nav("/new-bill", "New bill")
         + nav("/upload", "Contracts") + nav("/cis-return", "CIS return")
         + nav("/forecast", "Forecast") + nav("/contacts", "Contacts")
-        + "</nav><div class='sidebar-foot'>"
-        f"<div class='org'>{org or 'Not connected'}</div>"
-        "<a class='reconnect' href='/login'>Reconnect to Xero</a></div></aside>"
-        f"<main class='content'>{body}</main></div></body></html>"
+        + "</nav>"
+        f"<div class='org'><span class='dot'></span>{org or 'Not connected'}</div>"
+        "</div></div>"
+        f"<main class='content'>{body}</main></body></html>"
     )
 
 
@@ -94,10 +95,12 @@ def _wrap_html(resp):
 def index():
     if not xero.is_connected():
         return (
-            "<h1>HoldBack</h1>"
-            "<p class='sub'>Automate CIS retention on your subcontractor bills in Xero &mdash; "
-            "split, hold, and release, with the deduction handled for you.</p>"
-            "<p style='margin-top:20px'><a class='btn btn-primary' href='/login'>Connect to Xero</a></p>"
+            "<div class='home'><div class='logo'>Hold<b>Back</b></div>"
+            "<p class='sub'>Splits every subcontractor bill into a pay-now bill and a draft "
+            "retention bill in Xero &mdash; so retained money is tracked, released on time, and "
+            "CIS is deducted at the right rate.</p>"
+            "<p style='margin-top:10px'><a class='btn btn-primary' href='/login'>Connect to Xero</a></p>"
+            "</div>"
         )
     try:
         org = xero.get_organisation()["Organisations"][0]
@@ -106,22 +109,22 @@ def index():
                 f"<pre>{exc}</pre><p style='margin-top:16px'><a class='btn' href='/login'>Reconnect</a></p>")
     granted = xero.granted_scopes()
     missing = [s for s in xero.requested_scopes().split() if s not in granted.split()]
-    warn = (f"<p class='warn'>Missing scope(s): <code>{' '.join(missing)}</code> &mdash; "
-            "<a href='/login'>reconnect</a> to grant them.</p>") if missing else ""
+    warn = (f"<p class='warn' style='margin-bottom:16px'>Missing scope(s): "
+            f"<code>{' '.join(missing)}</code> &mdash; <a href='/login'>reconnect</a> to grant them.</p>"
+            ) if missing else ""
     return (
-        "<div class='page-head'><div><h1>Welcome</h1>"
-        f"<p class='sub'>Connected to <b>{org.get('Name')}</b> ({org.get('CountryCode')})</p></div>"
-        "<a class='btn btn-primary' href='/new-bill'>New bill</a></div>"
-        f"{warn}"
-        "<div class='tiles'>"
-        "<a class='tile' href='/dashboard'><div class='t'>Retention dashboard</div>"
-        "<div class='d'>Track retention held across jobs and release it at each trigger.</div></a>"
-        "<a class='tile' href='/new-bill'><div class='t'>New bill</div>"
-        "<div class='d'>Split a subcontractor bill into a pay-now and a retention bill.</div></a>"
-        "<a class='tile' href='/upload'><div class='t'>Contract terms</div>"
-        "<div class='d'>Pull retention terms straight from a subcontract PDF.</div></a>"
-        "</div>"
-        f"<p class='diag'>Scopes granted: {granted}</p>"
+        f"{warn}<div class='home'><div class='logo'>Hold<b>Back</b></div>"
+        "<p class='sub'>Splits every subcontractor bill into a pay-now bill and a draft retention "
+        "bill in Xero &mdash; so retained money is tracked, released on time, and CIS is deducted "
+        "at the right rate.</p>"
+        "<div class='dropzone'><div class='t'>Upload the subcontract PDF</div>"
+        "<div class='sub'>We'll extract the retention %, release triggers and contract value for "
+        "you to confirm &mdash; nothing is written to Xero without your sign-off.</div>"
+        "<a class='btn btn-primary' href='/upload' style='margin-top:8px'>Choose PDF&hellip;</a></div>"
+        "<div class='sub' style='margin-top:6px'>or skip the PDF &mdash; "
+        "<a href='/confirm'>enter terms manually</a></div>"
+        f"<p class='diag'>Connected to {org.get('Name')} ({org.get('CountryCode')}) &middot; "
+        f"scopes: {granted}</p></div>"
     )
 
 
@@ -548,71 +551,95 @@ def _retention_items():
     return items
 
 
+_MONO_TINTS = [
+    ("#CCFBF1", "#0F766E"), ("#DBEAFE", "#1D4ED8"), ("#E0E7FF", "#4338CA"),
+    ("#EDE9FE", "#6D28D9"), ("#FFEDD5", "#C2410C"), ("#E2E8F0", "#475569"),
+    ("#FCE7F3", "#BE185D"), ("#DCFCE7", "#15803D"),
+]
+
+
+def _monogram(name: str):
+    """(initials, bg, fg) for a subcontractor avatar — deterministic tint from the name."""
+    parts = [p for p in re.split(r"\s+", (name or "").strip()) if p]
+    if not parts:
+        return "?", _MONO_TINTS[0][0], _MONO_TINTS[0][1]
+    second = parts[1][0] if len(parts) > 1 else (parts[0][1:2] or "")
+    bg, fg = _MONO_TINTS[sum(ord(c) for c in name) % len(_MONO_TINTS)]
+    return (parts[0][0] + second).upper(), bg, fg
+
+
 @app.route("/dashboard")
 def dashboard():
-    """Retention across jobs with a lifecycle read from Xero status (DRAFT=Held,
-    AUTHORISED=Released, PAID=Paid). Held rows sorted soonest-release-first; total held
-    counts DRAFT tranches only."""
+    """Retention across jobs, lifecycle read from Xero status (DRAFT=Held, AUTHORISED=
+    Released, PAID=Paid). Held sorted soonest-release-first; hero totals per lane."""
     lanes = {"held": [], "released": [], "paid": []}
     for i in _retention_items():
         lanes[i["lane"]].append(i)
     for lane_items in lanes.values():
         lane_items.sort(key=lambda i: (i["due"] is None, i["due"] or datetime.date.max))
-    total_held = sum(float(i["held"] or 0) for i in lanes["held"])
-    jobs_held = len({i["name"] for i in lanes["held"]})
 
-    today = datetime.date.today()
-    upcoming = sorted(
-        [i for i in lanes["held"] if i["due"] and 0 <= (i["due"] - today).days <= 30],
-        key=lambda i: i["due"])
-    up_html = ""
-    if upcoming:
-        lis = "".join(
-            f"<li><b>{i['name']}</b> &mdash; {_money_fmt(i['held'])} due "
-            f"{i['due'].strftime('%d %b %Y')}</li>" for i in upcoming)
-        up_html = ("<div class='reminder'><div class='reminder-h'>Releasing in the next 30 days"
-                   f"</div><ul>{lis}</ul></div>")
+    def lane_total(lane):
+        return sum(float(i["held"] or 0) for i in lanes[lane])
+
+    jobs_held = len({i["name"] for i in lanes["held"]})
+    next_due = min((i["due"] for i in lanes["held"] if i["due"]), default=None)
+    next_txt = next_due.strftime("%d %b %Y") if next_due else "&mdash;"
+
+    hero = (
+        "<section class='hero'><div><div class='k'>Currently held</div>"
+        f"<div><span class='big'>{_money_fmt(lane_total('held'))}</span>"
+        f"<span class='across'>across {jobs_held} job(s)</span></div></div>"
+        "<div class='stats'>"
+        f"<div><div class='k'>Released &mdash; awaiting payment</div>"
+        f"<div class='v'>{_money_fmt(lane_total('released'))}</div></div><div class='vline'></div>"
+        f"<div><div class='k'>Paid</div><div class='v'>{_money_fmt(lane_total('paid'))}</div></div>"
+        f"<div class='vline'></div><div><div class='k'>Next release due</div>"
+        f"<div class='v'>{next_txt}</div></div></div></section>"
+    )
 
     def card(i):
-        chip = {"held": "Held", "released": "Released", "paid": "Paid"}[i["lane"]]
-        pill = f"<span class='pill'>tranche {i['tranche']}</span>" if i["tranche"] else ""
+        initials, bg, fg = _monogram(i["name"])
+        tranche = f"<span class='tranche'>tranche {i['tranche']}</span>" if i["tranche"] else ""
         due = i["due"].strftime("%d %b %Y") if i["due"] else "&mdash;"
-        inv = f" &middot; inv #{i['inv_no']}" if i["inv_no"] else ""
-        button = (
-            f"<form method='post' action='/dashboard/approve/{i['id']}' "
-            "onsubmit=\"return confirm('Release this retention now? The CIS rate is "
-            "re-checked before approving.')\"><button class='btn-primary'>Release</button></form>"
-        ) if i["lane"] == "held" else ""
-        muted = "" if i["lane"] == "held" else " muted"
+        inv_txt = i["inv_no"] or "Xero ↗"
+        inv = (f"<a class='card-inv' href='{_xero_link(i['id'])}' target='_blank' "
+               f"rel='noopener'>{inv_txt}</a>")
+        foot = ""
+        cls = " muted"
+        if i["lane"] == "held":
+            cls = " live"
+            foot = (
+                "<div class='card-foot'><form method='post' "
+                f"action='/dashboard/approve/{i['id']}' onsubmit=\"return confirm('Release this "
+                "retention now? The CIS rate is re-checked before approving.')\">"
+                "<button class='btn-release'>Release</button></form></div>"
+            )
         return (
-            f"<article class='card{muted}'>"
-            f"<div class='c1'><span class='job'>{i['name']}</span>"
-            f"<span class='chip chip-{i['lane']}'>{chip}</span></div>"
-            f"<div class='c2'><span class='amount'>{_money_fmt(i['held'])}</span>{pill}</div>"
-            f"<div class='c3'>release due {due}{inv} &middot; "
-            f"<a href='{_xero_link(i['id'])}' target='_blank' rel='noopener'>Xero &#8599;</a></div>"
-            f"{button}</article>"
+            f"<article class='card{cls}'><div class='card-top'>"
+            f"<div class='avatar' style='background:{bg};color:{fg}'>{initials}</div>"
+            f"<div style='min-width:0'><div class='card-name'>{i['name']}</div></div>"
+            f"<div class='card-amt'>{_money_fmt(i['held'])}</div></div>"
+            f"<div class='card-meta'>{tranche}<span class='card-due'>due {due}</span>{inv}</div>"
+            f"{foot}</article>"
         )
 
-    def column(title, lane):
+    def column(label, lane, lz):
         cards = "".join(card(i) for i in lanes[lane]) or "<div class='empty'>Nothing here yet</div>"
-        subtotal = sum(float(i["held"] or 0) for i in lanes[lane])
         return (
-            f"<section class='col'><div class='col-head'><span class='col-title'>{title}</span>"
-            f"<span class='count'>{len(lanes[lane])}</span>"
-            f"<span class='col-sub'>{_money_fmt(subtotal)}</span></div>{cards}</section>"
+            f"<section class='col'><div class='col-head'><span class='lozenge {lz}'>{label}</span>"
+            f"<span class='col-count'>{len(lanes[lane])}</span>"
+            f"<span class='col-sub'>{_money_fmt(lane_total(lane))}</span></div>{cards}</section>"
         )
 
     return (
-        "<div class='page-head'><div><h1>Retention</h1>"
-        f"<p class='sub'>Currently held <b>{_money_fmt(total_held)}</b> across {jobs_held} job(s)</p></div>"
-        "<a class='btn btn-primary' href='/new-bill'>New bill</a></div>"
-        + up_html
+        hero
         + "<div class='board'>"
-        + column("Held", "held")
-        + column("Released &mdash; awaiting payment", "released")
-        + column("Paid", "paid")
+        + column("HELD", "held", "lz-held")
+        + column("RELEASED &mdash; AWAITING PAYMENT", "released", "lz-released")
+        + column("PAID", "paid", "lz-paid")
         + "</div>"
+        + "<p class='hint' style='margin-top:14px'>Held is sorted by soonest release &middot; the "
+        "subcontractor's CIS rate is re-checked before any release is approved in Xero.</p>"
     )
 
 
