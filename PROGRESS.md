@@ -9,13 +9,14 @@ TESTS: 47 passed, 0 skipped. All routes render via the test client.
 
 OPEN QUESTIONS / TODO (escalate exactly as written):
 - USER hasn't done a live click-through of the new UI yet (Home upload, dashboard, release,
-  CIS return, statement, reminders). After restart, RECONNECT to Xero ONCE (FLASK_SECRET
-  changed, so the old signed session is invalid).
+  CIS return, statement). After restart, RECONNECT to Xero ONCE (FLASK_SECRET changed, so the
+  old signed session is invalid).
 - Does the CIS-return "CIS deducted" column populate? It reads Xero's CISDeduction on each
   bill and only appears once a bill is approved. Verify on the live org.
 - Xero deep link uses View.aspx?InvoiceID=<guid>; confirm it lands on the right bill.
-- Which automation next: CIS month-end pack / subbie verify+rate check / deadline reminders?
-  And the outbound "chase" drip (subcontractor-side, needs a retention-receivable data model).
+- Dashboard filter + sort on the Upcoming-releases table (recommended: a STATUS filter, since
+  Released/Paid items are currently only totals, not listed anywhere). Awaiting user go-ahead.
+- Which automation next: CIS month-end pack / subbie verify + rate check / deadline reminders.
 
 KEY DECISIONS:
 - Tie-break ROUND_HALF_DOWN (Option B, accountant-confirmed); pay-now labour is the plug.
@@ -27,8 +28,10 @@ KEY DECISIONS:
 - Security: Flask debug OFF by default (FLASK_DEBUG=1 to enable); FLASK_SECRET has no known
   fallback; all dynamic Xero values HTML-escaped (was stored-XSS); Xero reads guarded
   (before_request gate + global error handler); CSV formula-injection-safe.
-- Nav = New bill / Dashboard / CIS return / Reminders; tagline removed; content centered per
-  page (home 1120 / dashboard+wide 1280 / forms 720); copy has zero em-dashes (verified).
+- Nav = New bill / Dashboard / CIS return; tagline removed; content centered per page
+  (home 1120 / dashboard+wide 1280 / forms 720); copy has zero em-dashes (verified).
+- Reminders feature removed entirely (page, /reminders route, nav tab, mailto drip): the
+  contractor-side reminder did not fit the product; user asked to drop it.
 - Fonts via Google Fonts CDN with system fallbacks (deviates from the earlier no-CDN rule,
   per the design direction).
 - Design MCP needs interactive /design-login (unavailable in this session): user exports the
