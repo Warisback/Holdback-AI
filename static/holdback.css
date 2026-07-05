@@ -72,6 +72,21 @@ form p { margin:0 0 14px; }
 /* Stretch A — low-confidence extracted fields stay flagged */
 .low-confidence { border-left:3px solid var(--warning) !important; background:#FBF3E0 !important; }
 
+/* labelled form grid (New bill, etc.) */
+.form { max-width:660px; }
+.field { margin-bottom:16px; }
+.field > label { display:block; color:var(--muted); font-size:13px; font-weight:500; margin-bottom:4px; }
+.field input, .field select { width:100%; max-width:100%; margin-top:0; }
+.field-row { display:grid; gap:16px; }
+.field-row.two { grid-template-columns:1fr 1fr; }
+.field-row.three { grid-template-columns:1fr 1fr 1fr; }
+.hint { color:var(--muted-soft); font-size:12px; margin-top:5px; }
+label.radio { display:inline-flex; align-items:center; gap:6px; color:var(--body);
+              font-weight:400; font-size:14px; margin:6px 18px 0 0; }
+label.radio input { width:auto; max-width:none; margin:0; }
+.actions { display:flex; gap:10px; align-items:center; margin-top:8px; }
+@media (max-width:620px) { .field-row.two, .field-row.three { grid-template-columns:1fr; } }
+
 /* ---- tables ---- */
 table { border-collapse:separate; border-spacing:0; width:100%; font-size:14px;
         background:var(--canvas); border:1px solid var(--hairline); border-radius:var(--r-lg); overflow:hidden; }
