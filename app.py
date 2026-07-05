@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from flask import Flask, Response, redirect, request, session, url_for
@@ -603,10 +604,22 @@ def dashboard():
     else:
         next_txt, next_sub = "None scheduled", "nothing currently held"
 
+    # urgency figures: what the user should act on now (drives the KPI stat + the "needs attention" filter).
+    # ready_now = held and overdue/due today (raise the claim); due_30 = held and due within the next 30 days.
+    soon_cut = today + datetime.timedelta(days=30)
+    ready_now = sum(float(i["held"] or 0) for i in held if i["due"] and i["due"] <= today)
+    due_30 = sum(float(i["held"] or 0) for i in held if i["due"] and today < i["due"] <= soon_cut)
+    attention_ct = sum(1 for i in held if i["due"] and i["due"] <= soon_cut)
+    now_cls = " act-now" if ready_now else ""
+    soon_cls = " act-soon" if due_30 else ""
+
     kpi = (
         "<div class='kpi'>"
         f"<div><div class='kpi-label'>Total held</div><div class='kpi-value'>{_money_fmt(lane_total('held'))}</div>"
         f"<div class='kpi-sub'>releasing over the next {span} months</div></div>"
+        "<div class='kpi-split'>"
+        f"<div><div class='kpi-label'>Ready to claim</div><div class='kpi-num{now_cls}'>{_money_fmt(ready_now)}</div></div>"
+        f"<div><div class='kpi-label'>Due in 30 days</div><div class='kpi-num{soon_cls}'>{_money_fmt(due_30)}</div></div></div>"
         "<div class='kpi-split'>"
         f"<div><div class='kpi-label'>Released</div><div class='kpi-num rel'>{_money_fmt(lane_total('released'))}</div></div>"
         f"<div><div class='kpi-label'>Paid</div><div class='kpi-num paid'>{_money_fmt(lane_total('paid'))}</div></div></div>"
@@ -618,9 +631,9 @@ def dashboard():
         f"<div class='chart'>{bars}</div><div class='chart-x'>{xlabels}</div></div>"
     )
 
-    # ---- table: status filter + sort, both server-side via query params (no JS) ----
+    # ---- table: search + status filter + sort, all server-side via query params (no JS) ----
     status = request.args.get("status", "held")
-    if status not in ("held", "released", "paid", "all"):
+    if status not in ("attention", "held", "released", "paid", "all"):
         status = "held"
     sort = request.args.get("sort", "due")
     if sort not in ("due", "name", "amount"):
@@ -629,8 +642,27 @@ def dashboard():
     direction = request.args.get("dir", "")
     if direction not in ("asc", "desc"):
         direction = default_dir[sort]
+    q = request.args.get("q", "").strip()
 
-    display = (lanes["held"] + lanes["released"] + lanes["paid"]) if status == "all" else list(lanes[status])
+    def qs(**over):
+        """A /dashboard link that keeps the current status/sort/dir/search unless a key is overridden."""
+        p = {"status": status, "sort": sort, "dir": direction}
+        if q:
+            p["q"] = q
+        p.update(over)
+        return "/dashboard?" + urlencode({k: v for k, v in p.items() if v not in (None, "")})
+
+    if status == "all":
+        display = lanes["held"] + lanes["released"] + lanes["paid"]
+    elif status == "attention":  # held retention that is overdue or falls due within 30 days
+        display = [i for i in lanes["held"] if i["due"] and i["due"] <= soon_cut]
+    else:
+        display = list(lanes[status])
+    if q:  # free-text match on subcontractor name or bill number
+        ql = q.lower()
+        display = [i for i in display
+                   if ql in (i["name"] or "").lower() or ql in str(i["inv_no"] or "").lower()]
+
     rev = direction == "desc"
     if sort == "amount":
         display.sort(key=lambda i: float(i["held"] or 0), reverse=rev)
@@ -640,11 +672,12 @@ def dashboard():
         dated = sorted((i for i in display if i["due"]), key=lambda i: i["due"], reverse=rev)
         display = dated + [i for i in display if not i["due"]]
 
+    chip_defs = [("attention", "Needs attention" + (f" · {attention_ct}" if attention_ct else "")),
+                 ("held", "Held"), ("released", "Awaiting payment"), ("paid", "Paid"), ("all", "All")]
     chips = "".join(
-        f"<a class='rfilter{' active' if status == key else ''}' "
-        f"href='/dashboard?status={key}&sort={sort}&dir={direction}'>{esc(label)}</a>"
-        for key, label in (("held", "Held"), ("released", "Awaiting payment"),
-                           ("paid", "Paid"), ("all", "All")))
+        f"<a class='rfilter{' active' if status == key else ''}"
+        f"{' attn' if key == 'attention' and attention_ct else ''}' href='{qs(status=key)}'>{esc(label)}</a>"
+        for key, label in chip_defs)
 
     def hcell(label, key=None, cls=""):
         if key is None:  # plain, non-sortable label
@@ -653,8 +686,7 @@ def dashboard():
             nd, arrow, act = ("desc" if direction == "asc" else "asc"), (" ↑" if direction == "asc" else " ↓"), " active"
         else:
             nd, arrow, act = default_dir[key], "", ""
-        return (f"<div class='rh {cls}'><a class='rh-sort{act}' "
-                f"href='/dashboard?status={status}&sort={key}&dir={nd}'>{esc(label)}{arrow}</a></div>")
+        return f"<div class='rh {cls}'><a class='rh-sort{act}' href='{qs(sort=key, dir=nd)}'>{esc(label)}{arrow}</a></div>"
 
     header = ("<div class='rel-row rel-head'>"
               + hcell("Release date", "due") + hcell("Subcontractor", "name")
@@ -689,15 +721,28 @@ def dashboard():
             f"<div class='rel-amt'>{_money_fmt(i['held'])}</div>"
             f"<div class='rel-act'>{act}</div></div>"
         )
-    empty_msg = {"held": "No retention currently held.",
-                 "released": "Nothing awaiting payment.",
-                 "paid": "Nothing paid yet.",
-                 "all": "No retention bills yet."}[status]
+    if q:
+        empty_msg = f"No bills match '{esc(q)}'."
+    else:
+        empty_msg = {"attention": "Nothing needs attention in the next 30 days.",
+                     "held": "No retention currently held.",
+                     "released": "Nothing awaiting payment.",
+                     "paid": "Nothing paid yet.",
+                     "all": "No retention bills yet."}[status]
     body = (header + "".join(row(i) for i in display)) if display else f"<div class='rel-empty'>{empty_msg}</div>"
+    search = (
+        "<form class='rel-search' method='get' action='/dashboard'>"
+        f"<input type='hidden' name='status' value='{esc(status)}'>"
+        f"<input type='hidden' name='sort' value='{esc(sort)}'>"
+        f"<input type='hidden' name='dir' value='{esc(direction)}'>"
+        f"<input class='rel-q' type='search' name='q' value='{esc(q)}' placeholder='Search subcontractor or bill no.'>"
+        "<button class='rel-qbtn'>Search</button></form>"
+    )
+    clear = f"<a class='rel-qclear' href='{qs(q='')}'>Clear</a>" if q else ""
     releases = (
         "<div class='releases'><div class='releases-head'>"
         "<span class='releases-h'>Retention releases</span>"
-        f"<div class='releases-filters'>{chips}</div></div>"
+        f"<div class='releases-tools'>{search}{clear}<div class='releases-filters'>{chips}</div></div></div>"
         f"<div class='table-wrap'>{body}</div></div>"
     )
     return f"<div class='dash'><div class='dash-row1'>{kpi}{chart}</div>{releases}</div>"
