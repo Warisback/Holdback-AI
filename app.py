@@ -145,20 +145,34 @@ def callback():
 
 @app.route("/contacts")
 def contacts():
-    """Helper to find a ContactID so we can inspect the live CISSettings field names."""
     rows = "".join(
-        f'<li>{c.get("Name")} &mdash; <code>{c.get("ContactID")}</code> '
-        f'&mdash; <a href="/cis/{c.get("ContactID")}">CIS settings</a></li>'
+        f"<tr><td>{c.get('Name')}</td>"
+        f"<td><a href='/new-bill?contact_id={c.get('ContactID')}'>New bill &rarr;</a>"
+        f" &middot; <a href='/upload'>Set terms</a>"
+        f" &middot; <a href='/cis/{c.get('ContactID')}'>CIS settings</a></td></tr>"
         for c in xero.get_contacts().get("Contacts", [])
     )
-    return f"<h1>Contacts</h1><ul>{rows}</ul>"
+    return (
+        "<div class='page-head'><div><h1>Contacts</h1>"
+        "<p class='sub'>Your Xero contacts &mdash; start a HoldBack bill for any subcontractor.</p>"
+        "</div></div>"
+        "<table><thead><tr><th>Name</th><th>Actions</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
+    )
 
 
 @app.route("/cis/<contact_id>")
 def cis(contact_id):
-    """Echo raw CISSettings JSON so we can confirm exact field names before using them."""
-    data = xero.get_contact_cis_settings(contact_id)
-    return f"<h1>CISSettings</h1><pre>{json.dumps(data, indent=2)}</pre>"
+    """Show a contact's CIS settings (rate/status). Fails gracefully if unavailable."""
+    try:
+        data = xero.get_contact_cis_settings(contact_id)
+    except Exception as exc:  # noqa: BLE001
+        return ("<h1>CIS settings</h1>"
+                "<div class='warn'>Couldn't read CIS settings for this contact &mdash; the "
+                "contact may not be set up as a CIS subcontractor yet.</div>"
+                f"<pre>{exc}</pre><p><a href='/contacts'>Back to contacts</a></p>")
+    return (f"<h1>CIS settings</h1><pre>{json.dumps(data, indent=2)}</pre>"
+            "<p><a href='/contacts'>Back to contacts</a></p>")
 
 
 @app.route("/accounts")
@@ -367,35 +381,48 @@ def new_bill_form():
     note = ("<p style='color:#080'>Loaded saved terms for this job &mdash; fields still "
             "overridable.</p>") if stored else ""
     return f"""
-    <h1>Create HoldBack bills</h1>
-    <p>Splits one subcontractor bill into a pay-now bill + DRAFT retention bill(s).</p>
+    <div class="page-head"><div><h1>Create HoldBack bills</h1>
+      <p class="sub">Split one subcontractor bill into a pay-now bill + DRAFT retention bill(s).</p>
+    </div></div>
     {note}
-    <form method="post">
-      <p>Subcontractor (pick the one set up as a CIS subcontractor):<br>
+    <form method="post" class="form">
+      <div class="field"><label>Subcontractor</label>
         <select name="contact_id" required>
-          <option value="">-- choose --</option>{options}
-        </select></p>
-      <p>Total &pound;<input name="total" value="1500.00" size="10">
-         = Labour &pound;<input name="labour" value="1000.00" size="10">
-         + Materials &pound;<input name="materials" value="500.00" size="10"></p>
-      <p>Retention <input name="retention_pct" value="{retention_val}" size="3">% &nbsp;
-         Bill date <input name="date" value="{today}" size="12"></p>
-      <fieldset><legend>Release triggers (retention released in tranches)</legend>
-        <p>Trigger 1 &mdash; share <input name="trigger1_pct" value="{t1_pct}" size="3">%
-           on <input name="trigger1_date" value="{t1_date}" size="12"></p>
-        <p>Trigger 2 (optional) &mdash; share <input name="trigger2_pct" value="{t2_pct}" size="3">%
-           on <input name="trigger2_date" value="{t2_date}" size="12"></p>
-        <small>Leave Trigger 2 blank for a single release (100% at Trigger 1). For two
-        releases, the two shares must sum to 100.</small>
+          <option value="">Choose a subcontractor&hellip;</option>{options}</select>
+        <div class="hint">Pick the contact set up as a CIS subcontractor in Xero.</div>
+      </div>
+      <div class="field-row three">
+        <div class="field"><label>Total (&pound;)</label><input name="total" value="1500.00"></div>
+        <div class="field"><label>Labour (&pound;)</label><input name="labour" value="1000.00"></div>
+        <div class="field"><label>Materials (&pound;)</label><input name="materials" value="500.00"></div>
+      </div>
+      <div class="field-row two">
+        <div class="field"><label>Retention (%)</label><input name="retention_pct" value="{retention_val}"></div>
+        <div class="field"><label>Bill date</label><input name="date" value="{today}"></div>
+      </div>
+      <fieldset><legend>Release triggers</legend>
+        <div class="field-row two">
+          <div class="field"><label>Trigger 1 &mdash; share (%)</label><input name="trigger1_pct" value="{t1_pct}"></div>
+          <div class="field"><label>Trigger 1 &mdash; release date</label><input name="trigger1_date" value="{t1_date}"></div>
+        </div>
+        <div class="field-row two">
+          <div class="field"><label>Trigger 2 &mdash; share (%)</label><input name="trigger2_pct" value="{t2_pct}"></div>
+          <div class="field"><label>Trigger 2 &mdash; release date</label><input name="trigger2_date" value="{t2_date}"></div>
+        </div>
+        <div class="hint">Leave Trigger 2 blank for a single release (100% at Trigger 1).
+          For two releases, the shares must sum to 100.</div>
       </fieldset>
-      <p>Pay-now bill:
-        <label><input type="radio" name="pay_now_status" value="DRAFT" checked>
-          Draft (review &amp; approve by hand)</label>
-        <label><input type="radio" name="pay_now_status" value="AUTHORISED">
-          Approve now</label></p>
-      <button class="btn-primary" type="submit">Create bills in Xero</button>
-    </form>
-    <p><a href="/upload">Set contract terms from a PDF</a> &middot; <a href="/">Home</a></p>"""
+      <div class="field"><label>Pay-now bill</label>
+        <label class="radio"><input type="radio" name="pay_now_status" value="DRAFT" checked>
+          Draft &mdash; review &amp; approve by hand</label>
+        <label class="radio"><input type="radio" name="pay_now_status" value="AUTHORISED">
+          Approve now</label>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" type="submit">Create bills in Xero</button>
+        <a class="btn" href="/upload">Set terms from a PDF</a>
+      </div>
+    </form>"""
 
 
 @app.route("/new-bill", methods=["POST"])
