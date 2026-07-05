@@ -119,6 +119,29 @@ table form { margin:0; }
         border-radius:var(--r-md); font-size:14px; }
 .diag { margin-top:28px; font-size:12px; color:var(--muted-soft); word-break:break-all; }
 
+/* ---- reminder banner (upcoming releases) ---- */
+.reminder { background:var(--surface-card); border:1px solid var(--hairline); border-radius:var(--r-lg);
+            padding:14px 18px; margin-bottom:20px; }
+.reminder-h { font-weight:600; color:var(--ink); font-size:14px; margin-bottom:6px; }
+.reminder ul { margin:0; padding-left:18px; }
+.reminder li { font-size:13px; color:var(--body); margin:2px 0; }
+
+/* ---- term risk flags (confirm screen) ---- */
+.flags { background:#FBF3E0; border:1px solid #E7D6A8; border-radius:var(--r-lg);
+         padding:14px 18px; margin:0 0 20px; max-width:640px; }
+.flags-h { font-weight:600; color:#8a5a1e; font-size:14px; margin-bottom:6px; }
+.flags ul { margin:0; padding-left:18px; }
+.flags li { font-size:13px; color:var(--body-strong); margin:3px 0; }
+
+/* ---- release forecast bar chart ---- */
+.chart { display:flex; align-items:flex-end; gap:10px; min-height:224px; padding:16px 16px 0;
+         background:var(--surface-soft); border:1px solid var(--hairline); border-radius:var(--r-lg); }
+.bar { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:216px; }
+.bar-val { font-size:11px; color:var(--muted); height:16px; font-variant-numeric:tabular-nums; }
+.bar-fill { width:70%; max-width:40px; background:var(--primary); border-radius:6px 6px 0 0; min-height:2px; }
+.bar-x { font-size:11px; color:var(--muted); margin-top:8px; text-align:center; line-height:1.2; }
+.xero-link { white-space:nowrap; }
+
 @media (max-width:760px) {
   .app { flex-direction:column; }
   .sidebar { width:auto; height:auto; position:static; flex-direction:row; flex-wrap:wrap; align-items:center; }
