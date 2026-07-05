@@ -37,6 +37,13 @@ def test_two_bills_are_accpay_never_accrec():
         assert bill["Contact"] == {"ContactID": "CID-123"}
 
 
+def test_pay_now_bill_always_has_a_due_date():
+    # Xero rejects approval of a bill with no due date; default to the bill date.
+    assert build_accpay_bills(SPLIT, **KW)["pay_now"]["DueDate"] == "2026-07-04"
+    explicit = build_accpay_bills(SPLIT, pay_now_due_date="2026-08-04", **KW)["pay_now"]
+    assert explicit["DueDate"] == "2026-08-04"
+
+
 def test_retention_bill_is_draft_and_due_dated_to_release():
     ret = build_accpay_bills(SPLIT, **KW)["retention_bills"][0]
     assert ret["Status"] == "DRAFT"
