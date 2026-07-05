@@ -23,6 +23,16 @@ DONE:
   tiles (scopes moved to small diagnostics). Money £1,234.56 tabular; amber low-confidence
   survives (3px left-border + tint). Fonts load from Google Fonts CDN with system fallbacks.
 
+FEATURES (stand-out set, all wired + rendering):
+- CIS monthly return (/cis-return) grouped per subcontractor (labour/materials/CIS deducted)
+  + CSV export; per-subbie Payment & Deduction Statement (/statement/<id>).
+- Release forecast (/forecast): pure-CSS bar chart of retention releasing over 12 months.
+- Reminders: "releasing in the next 30 days" banner on the dashboard.
+- Xero deep links on every dashboard card ("Xero ↗").
+- Term risk flags on the confirm screen (deterministic: >5%/0% retention, missing trigger
+  date, shares not summing to 100, trigger 2 condition w/o date).
+Sidebar nav now: Dashboard / New bill / Contracts / CIS return / Forecast / Contacts.
+
 TESTS: 46 passed, 0 skipped.
 
 OPEN / TODO:

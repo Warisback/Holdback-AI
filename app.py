@@ -19,7 +19,7 @@ import secrets
 from decimal import Decimal
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, request, session, url_for
+from flask import Flask, Response, redirect, request, session, url_for
 
 load_dotenv(override=True)  # populate os.environ from .env BEFORE importing the Xero client
 # NOTE: .env is read ONCE here at startup. Flask's reloader only watches .py files, so
@@ -69,7 +69,8 @@ def _page(body: str) -> str:
         "<div class='brand'><span class='logomark'>H</span><span class='wordmark'>HoldBack</span></div>"
         "<div class='tagline'>Retention &amp; CIS for Xero</div><nav>"
         + nav("/dashboard", "Dashboard") + nav("/new-bill", "New bill")
-        + nav("/upload", "Contracts") + nav("/contacts", "Contacts")
+        + nav("/upload", "Contracts") + nav("/cis-return", "CIS return")
+        + nav("/forecast", "Forecast") + nav("/contacts", "Contacts")
         + "</nav><div class='sidebar-foot'>"
         f"<div class='org'>{org or 'Not connected'}</div>"
         "<a class='reconnect' href='/login'>Reconnect to Xero</a></div></aside>"
@@ -217,13 +218,55 @@ def _confirm_field(label, name, node) -> str:
             f"<input name='{name}' value=\"{val}\"{cls}></label></p>")
 
 
+def _term_flags(terms) -> list:
+    """Deterministic checks on the extracted/entered terms — surfaced on the confirm screen."""
+    def val(node):
+        v = node.get("value") if isinstance(node, dict) else None
+        return v if v not in (None, "") else None
+
+    if not any(val(n) for n in (
+            terms["retention_pct"], terms["contract_value"],
+            terms["trigger1"]["condition"], terms["trigger1"]["pct"], terms["trigger1"]["expected_date"],
+            terms["trigger2"]["condition"], terms["trigger2"]["pct"], terms["trigger2"]["expected_date"])):
+        return []
+
+    def num(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    flags = []
+    rp = num(val(terms["retention_pct"]))
+    if rp is not None:
+        if rp == 0:
+            flags.append("Retention is 0% — no money will be held back.")
+        elif rp > 10:
+            flags.append(f"Retention {rp:g}% is unusually high — double-check the contract.")
+        elif rp > 5:
+            flags.append(f"Retention {rp:g}% is above the typical 5%.")
+    if not val(terms["trigger1"]["expected_date"]):
+        flags.append("No expected release date on Trigger 1 — needed to due-date the retention bill.")
+    a, b = num(val(terms["trigger1"]["pct"])), num(val(terms["trigger2"]["pct"]))
+    if a is not None and b is not None and abs((a + b) - 100) > 0.001:
+        flags.append(f"Trigger shares {a:g}% + {b:g}% don't sum to 100%.")
+    if val(terms["trigger2"]["condition"]) and not val(terms["trigger2"]["expected_date"]):
+        flags.append("Trigger 2 has a condition but no expected date.")
+    return flags
+
+
 def _render_confirm(terms, note="") -> str:
     t1, t2 = terms["trigger1"], terms["trigger2"]
     note_html = f"<p style='color:#080'>{note}</p>" if note else ""
+    flags = _term_flags(terms)
+    flag_html = ""
+    if flags:
+        flag_html = ("<div class='flags'><div class='flags-h'>Review these terms</div><ul>"
+                     + "".join(f"<li>{f}</li>" for f in flags) + "</ul></div>")
     return f"""
     <h1>Confirm contract terms</h1>
-    <p>Every field is editable. <b>Amber</b> means the extractor wasn't confident &mdash; check it.</p>
-    {note_html}
+    <p class="sub">Every field is editable. <b>Amber</b> means the extractor wasn't confident &mdash; check it.</p>
+    {note_html}{flag_html}
     <form method="post" action="/confirm">
       <p>Job / subcontractor:<br>
         <select name="contact_id" required>
@@ -491,6 +534,18 @@ def dashboard():
     total_held = sum(float(i["held"] or 0) for i in lanes["held"])
     jobs_held = len({i["name"] for i in lanes["held"]})
 
+    today = datetime.date.today()
+    upcoming = sorted(
+        [i for i in lanes["held"] if i["due"] and 0 <= (i["due"] - today).days <= 30],
+        key=lambda i: i["due"])
+    up_html = ""
+    if upcoming:
+        lis = "".join(
+            f"<li><b>{i['name']}</b> &mdash; {_money_fmt(i['held'])} due "
+            f"{i['due'].strftime('%d %b %Y')}</li>" for i in upcoming)
+        up_html = ("<div class='reminder'><div class='reminder-h'>Releasing in the next 30 days"
+                   f"</div><ul>{lis}</ul></div>")
+
     def card(i):
         chip = {"held": "Held", "released": "Released", "paid": "Paid"}[i["lane"]]
         pill = f"<span class='pill'>tranche {i['tranche']}</span>" if i["tranche"] else ""
@@ -507,7 +562,9 @@ def dashboard():
             f"<div class='c1'><span class='job'>{i['name']}</span>"
             f"<span class='chip chip-{i['lane']}'>{chip}</span></div>"
             f"<div class='c2'><span class='amount'>{_money_fmt(i['held'])}</span>{pill}</div>"
-            f"<div class='c3'>release due {due}{inv}</div>{button}</article>"
+            f"<div class='c3'>release due {due}{inv} &middot; "
+            f"<a href='{_xero_link(i['id'])}' target='_blank' rel='noopener'>Xero &#8599;</a></div>"
+            f"{button}</article>"
         )
 
     def column(title, lane):
@@ -523,7 +580,8 @@ def dashboard():
         "<div class='page-head'><div><h1>Retention</h1>"
         f"<p class='sub'>Currently held <b>{_money_fmt(total_held)}</b> across {jobs_held} job(s)</p></div>"
         "<a class='btn btn-primary' href='/new-bill'>New bill</a></div>"
-        "<div class='board'>"
+        + up_html
+        + "<div class='board'>"
         + column("Held", "held")
         + column("Released &mdash; awaiting payment", "released")
         + column("Paid", "paid")
@@ -552,6 +610,155 @@ def dashboard_approve(invoice_id):
     return (
         f"<h1>Released &check;</h1><p>{note}</p>"
         "<p><a href='/dashboard'>Back to dashboard</a></p>"
+    )
+
+
+# --- feature: CIS monthly return + per-subcontractor statement -------------------------
+XERO_BILL_URL = "https://go.xero.com/AccountsPayable/View.aspx?InvoiceID="
+
+
+def _xero_link(invoice_id: str) -> str:
+    return XERO_BILL_URL + (invoice_id or "")
+
+
+def _line_sum(inv: dict, account_code: str) -> Decimal:
+    """Sum the net line amounts on a bill for a given account code (labour vs materials)."""
+    total = Decimal("0")
+    for li in inv.get("LineItems", []):
+        if str(li.get("AccountCode")) == account_code:
+            amt = li.get("LineAmount")
+            if amt is None:
+                amt = li.get("UnitAmount", 0)
+            total += Decimal(str(amt or 0))
+    return total
+
+
+def _holdback_bills() -> list:
+    """Every HoldBack bill (pay-now + retention), across statuses."""
+    return [inv for inv in xero.get_bills(where='Type=="ACCPAY"').get("Invoices", [])
+            if (inv.get("Reference") or "").startswith("HoldBack")]
+
+
+def _cis_by_subcontractor() -> dict:
+    rows: dict = {}
+    for inv in _holdback_bills():
+        c = inv.get("Contact") or {}
+        r = rows.setdefault(c.get("Name", "?"), {
+            "cid": c.get("ContactID", ""), "labour": Decimal("0"),
+            "materials": Decimal("0"), "deduction": Decimal("0"), "bills": 0})
+        r["labour"] += _line_sum(inv, CIS_LABOUR_ACCOUNT)
+        r["materials"] += _line_sum(inv, MATERIALS_ACCOUNT)
+        ded = inv.get("CISDeduction")
+        if ded not in (None, ""):
+            r["deduction"] += Decimal(str(ded))
+        r["bills"] += 1
+    return rows
+
+
+@app.route("/cis-return")
+def cis_return():
+    rows = _cis_by_subcontractor()
+    tot_lab = tot_mat = tot_ded = Decimal("0")
+    body = ""
+    for name, r in sorted(rows.items()):
+        tot_lab += r["labour"]; tot_mat += r["materials"]; tot_ded += r["deduction"]
+        body += (f"<tr><td>{name}</td><td class='num'>{_money_fmt(r['labour'] + r['materials'])}</td>"
+                 f"<td class='num'>{_money_fmt(r['materials'])}</td>"
+                 f"<td class='num'>{_money_fmt(r['labour'])}</td>"
+                 f"<td class='num'>{_money_fmt(r['deduction'])}</td>"
+                 f"<td><a href='/statement/{r['cid']}'>Statement</a></td></tr>")
+    if not body:
+        body = "<tr><td colspan='6'>No HoldBack bills yet.</td></tr>"
+    else:
+        body += (f"<tr><th>Total</th><th class='num'>{_money_fmt(tot_lab + tot_mat)}</th>"
+                 f"<th class='num'>{_money_fmt(tot_mat)}</th><th class='num'>{_money_fmt(tot_lab)}</th>"
+                 f"<th class='num'>{_money_fmt(tot_ded)}</th><th></th></tr>")
+    return (
+        "<div class='page-head'><div><h1>CIS monthly return</h1>"
+        "<p class='sub'>Payments and deductions per subcontractor, from your HoldBack bills.</p></div>"
+        "<a class='btn' href='/cis-return.csv'>Export CSV</a></div>"
+        "<table><thead><tr><th>Subcontractor</th><th class='num'>Total payments</th>"
+        "<th class='num'>Materials</th><th class='num'>Labour (CIS base)</th>"
+        "<th class='num'>CIS deducted</th><th>PDS</th></tr></thead>"
+        f"<tbody>{body}</tbody></table>"
+        "<p class='diag'>CIS deducted reflects Xero's figure on each bill (shown once approved). "
+        "Materials are excluded from the CIS base.</p>"
+    )
+
+
+@app.route("/cis-return.csv")
+def cis_return_csv():
+    out = ["Subcontractor,Total payments,Materials,Labour (CIS base),CIS deducted"]
+    for name, r in sorted(_cis_by_subcontractor().items()):
+        out.append(f'"{name}",{r["labour"] + r["materials"]:.2f},{r["materials"]:.2f},'
+                   f'{r["labour"]:.2f},{r["deduction"]:.2f}')
+    return Response("\n".join(out) + "\n", mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=cis-return.csv"})
+
+
+@app.route("/statement/<contact_id>")
+def statement(contact_id):
+    bills = [inv for inv in _holdback_bills()
+             if (inv.get("Contact") or {}).get("ContactID") == contact_id]
+    if not bills:
+        return "<h1>Statement</h1><p class='sub'>No HoldBack bills for this contact.</p>"
+    name = (bills[0].get("Contact") or {}).get("Name", "?")
+    tl = tm = td = Decimal("0")
+    rows = ""
+    for inv in bills:
+        lab = _line_sum(inv, CIS_LABOUR_ACCOUNT)
+        mat = _line_sum(inv, MATERIALS_ACCOUNT)
+        ded = inv.get("CISDeduction")
+        ded = Decimal(str(ded)) if ded not in (None, "") else Decimal("0")
+        tl += lab; tm += mat; td += ded
+        rows += (f"<tr><td>{_parse_xero_date(inv.get('Date')) or ''}</td>"
+                 f"<td>{inv.get('Reference')}</td><td class='num'>{_money_fmt(lab)}</td>"
+                 f"<td class='num'>{_money_fmt(mat)}</td><td class='num'>{_money_fmt(ded)}</td>"
+                 f"<td>{inv.get('Status')}</td></tr>")
+    return (
+        "<div class='page-head'><div><h1>Payment &amp; deduction statement</h1>"
+        f"<p class='sub'>{name}</p></div><a class='btn' href='/cis-return'>Back to CIS return</a></div>"
+        "<table><thead><tr><th>Date</th><th>Bill</th><th class='num'>Labour</th>"
+        "<th class='num'>Materials</th><th class='num'>CIS deducted</th><th>Status</th></tr></thead>"
+        f"<tbody>{rows}<tr><th colspan='2'>Total</th><th class='num'>{_money_fmt(tl)}</th>"
+        f"<th class='num'>{_money_fmt(tm)}</th><th class='num'>{_money_fmt(td)}</th><th></th></tr></tbody></table>"
+        "<p class='diag'>Give this to the subcontractor for the tax month (an HMRC CIS requirement). "
+        "Materials are excluded from the CIS deduction.</p>"
+    )
+
+
+# --- feature: release forecast (cash-flow of retention over the next 12 months) ---------
+@app.route("/forecast")
+def forecast():
+    held = [i for i in _retention_items() if i["lane"] == "held" and i["due"]]
+    today = datetime.date.today()
+    base = today.year * 12 + (today.month - 1)
+    labels, totals = [], []
+    for k in range(12):
+        idx = base + k
+        labels.append(datetime.date(idx // 12, idx % 12 + 1, 1))
+        totals.append(0.0)
+    later = 0.0
+    for i in held:
+        pos = (i["due"].year * 12 + (i["due"].month - 1)) - base
+        if 0 <= pos < 12:
+            totals[pos] += float(i["held"] or 0)
+        elif pos >= 12:
+            later += float(i["held"] or 0)
+    mx = max(totals + [1.0])
+    bars = ""
+    for lab, tot in zip(labels, totals):
+        px = int(round(tot / mx * 180)) if tot else 0
+        val = _money_fmt(tot) if tot else ""
+        bars += (f"<div class='bar'><div class='bar-val'>{val}</div>"
+                 f"<div class='bar-fill' style='height:{px}px'></div>"
+                 f"<div class='bar-x'>{lab.strftime('%b')}<br><small>'{lab.strftime('%y')}</small></div></div>")
+    later_note = f"<p class='sub'>Plus {_money_fmt(later)} releasing beyond 12 months.</p>" if later else ""
+    return (
+        "<div class='page-head'><div><h1>Release forecast</h1>"
+        f"<p class='sub'><b>{_money_fmt(sum(totals))}</b> of retention scheduled to release over "
+        "the next 12 months</p></div></div>"
+        f"<div class='chart'>{bars}</div>{later_note}"
     )
 
 
