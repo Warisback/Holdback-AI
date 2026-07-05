@@ -14,8 +14,6 @@ OPEN QUESTIONS / TODO (escalate exactly as written):
 - Does the CIS-return "CIS deducted" column populate? It reads Xero's CISDeduction on each
   bill and only appears once a bill is approved. Verify on the live org.
 - Xero deep link uses View.aspx?InvoiceID=<guid>; confirm it lands on the right bill.
-- Dashboard filter + sort on the Upcoming-releases table (recommended: a STATUS filter, since
-  Released/Paid items are currently only totals, not listed anywhere). Awaiting user go-ahead.
 - Which automation next: CIS month-end pack / subbie verify + rate check / deadline reminders.
 
 KEY DECISIONS:
@@ -28,6 +26,11 @@ KEY DECISIONS:
 - Security: Flask debug OFF by default (FLASK_DEBUG=1 to enable); FLASK_SECRET has no known
   fallback; all dynamic Xero values HTML-escaped (was stored-XSS); Xero reads guarded
   (before_request gate + global error handler); CSV formula-injection-safe.
+- Dashboard table: status filter (Held [default] / Awaiting payment / Paid / All) + sortable
+  column headers (Release date [default asc] / Subcontractor / Amount), server-side via query
+  params (?status=&sort=&dir=), no JS. Headers label every column; released/paid rows show a
+  status pill instead of the Release button; "Due in" only populates while held; undated rows
+  always sort last. Bare /dashboard is unchanged (held, soonest first).
 - Nav = New bill / Dashboard / CIS return; tagline removed; content centered per page
   (home 1120 / dashboard+wide 1280 / forms 720); copy has zero em-dashes (verified).
 - Reminders feature removed entirely (page, /reminders route, nav tab, mailto drip): the
