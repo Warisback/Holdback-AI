@@ -48,18 +48,32 @@ def _org_name() -> str:
 
 
 def _page(body: str) -> str:
-    """Wrap a body fragment in the full document + site header (one stylesheet)."""
+    """Wrap a body fragment in the app shell: sticky left sidebar + content area."""
+    path = request.path
+
+    def nav(href, label):
+        active = " active" if path == href or (href != "/" and path.startswith(href)) else ""
+        return f"<a class='nav-item{active}' href='{href}'>{label}</a>"
+
+    org = _org_name()
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>HoldBack</title><link rel='stylesheet' href='/static/holdback.css'></head>"
-        "<body><header class='site-header'>"
-        "<span class='brand'><span class='wordmark'>HoldBack</span>"
-        "<span class='tagline'>retention &amp; CIS for Xero</span></span>"
-        "<nav class='site-nav'><a href='/new-bill'>New bill</a>"
-        "<a href='/upload'>Contracts</a><a href='/dashboard'>Dashboard</a></nav>"
-        f"<span class='org'>{_org_name()}</span>"
-        f"</header><main>{body}</main></body></html>"
+        "<title>HoldBack</title>"
+        "<link rel='preconnect' href='https://fonts.googleapis.com'>"
+        "<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
+        "<link rel='stylesheet' href='https://fonts.googleapis.com/css2?"
+        "family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap'>"
+        "<link rel='stylesheet' href='/static/holdback.css'></head><body><div class='app'>"
+        "<aside class='sidebar'>"
+        "<div class='brand'><span class='logomark'>H</span><span class='wordmark'>HoldBack</span></div>"
+        "<div class='tagline'>Retention &amp; CIS for Xero</div><nav>"
+        + nav("/dashboard", "Dashboard") + nav("/new-bill", "New bill")
+        + nav("/upload", "Contracts") + nav("/contacts", "Contacts")
+        + "</nav><div class='sidebar-foot'>"
+        f"<div class='org'>{org or 'Not connected'}</div>"
+        "<a class='reconnect' href='/login'>Reconnect to Xero</a></div></aside>"
+        f"<main class='content'>{body}</main></div></body></html>"
     )
 
 
@@ -79,39 +93,34 @@ def _wrap_html(resp):
 def index():
     if not xero.is_connected():
         return (
-            "<h1>HoldBack</h1><p>Not connected to Xero.</p>"
-            '<p><a href="/login">Connect to Xero</a></p>'
+            "<h1>HoldBack</h1>"
+            "<p class='sub'>Automate CIS retention on your subcontractor bills in Xero &mdash; "
+            "split, hold, and release, with the deduction handled for you.</p>"
+            "<p style='margin-top:20px'><a class='btn btn-primary' href='/login'>Connect to Xero</a></p>"
         )
     try:
         org = xero.get_organisation()["Organisations"][0]
     except Exception as exc:  # noqa: BLE001 - surface the raw error during the build
-        return (
-            f"<h1>HoldBack</h1><p>Connected, but the API call failed:</p>"
-            f"<pre>{exc}</pre><p><a href='/login'>Reconnect</a></p>"
-        )
-    requested = xero.requested_scopes()
+        return (f"<h1>Connection issue</h1><div class='warn'>Connected, but the API call failed.</div>"
+                f"<pre>{exc}</pre><p style='margin-top:16px'><a class='btn' href='/login'>Reconnect</a></p>")
     granted = xero.granted_scopes()
-    missing = [s for s in requested.split() if s not in granted.split()]
-    warn = ""
-    if missing:
-        warn = (
-            f"<p style='color:#b00'><b>Requested but NOT granted:</b> "
-            f"<code>{' '.join(missing)}</code>.<br>Xero refused these. If you just completed "
-            "a clean consent (no 'State mismatch' page) and they're still missing, the app "
-            "in the Xero developer portal doesn't have them enabled — enable them there, then "
-            "<a href='/login'>Reconnect</a>.</p>"
-        )
+    missing = [s for s in xero.requested_scopes().split() if s not in granted.split()]
+    warn = (f"<p class='warn'>Missing scope(s): <code>{' '.join(missing)}</code> &mdash; "
+            "<a href='/login'>reconnect</a> to grant them.</p>") if missing else ""
     return (
-        f"<h1>HoldBack</h1><p>Connected &check; &mdash; <b>{org.get('Name')}</b> "
-        f"({org.get('CountryCode')})</p>"
-        f"<p><b>Requesting</b> (from .env):<br><code>{requested}</code></p>"
-        f"<p><b>Granted</b> (on token):<br><code>{granted}</code></p>{warn}"
-        "<p><a href='/upload'>Contract terms (PDF)</a> &middot; "
-        "<a href='/new-bill'>Create bills</a> &middot; "
-        "<a href='/dashboard'>Retention dashboard</a> &middot; "
-        "<a href='/contacts'>Contacts</a> &middot; "
-        "<a href='/accounts'>Accounts</a> &middot; "
-        "<a href='/login'>Reconnect (re-authorise scopes)</a></p>"
+        "<div class='page-head'><div><h1>Welcome</h1>"
+        f"<p class='sub'>Connected to <b>{org.get('Name')}</b> ({org.get('CountryCode')})</p></div>"
+        "<a class='btn btn-primary' href='/new-bill'>New bill</a></div>"
+        f"{warn}"
+        "<div class='tiles'>"
+        "<a class='tile' href='/dashboard'><div class='t'>Retention dashboard</div>"
+        "<div class='d'>Track retention held across jobs and release it at each trigger.</div></a>"
+        "<a class='tile' href='/new-bill'><div class='t'>New bill</div>"
+        "<div class='d'>Split a subcontractor bill into a pay-now and a retention bill.</div></a>"
+        "<a class='tile' href='/upload'><div class='t'>Contract terms</div>"
+        "<div class='d'>Pull retention terms straight from a subcontract PDF.</div></a>"
+        "</div>"
+        f"<p class='diag'>Scopes granted: {granted}</p>"
     )
 
 
@@ -232,7 +241,7 @@ def _render_confirm(terms, note="") -> str:
         {_confirm_field("Expected release date (YYYY-MM-DD)", "trigger2_date", t2["expected_date"])}
       </fieldset>
       {_confirm_field("Contract value (display only)", "contract_value", terms["contract_value"])}
-      <button type="submit">Save terms</button>
+      <button class="btn-primary" type="submit">Save terms</button>
     </form>
     <p><a href="/upload">Upload a different PDF</a> &middot; <a href="/">Home</a></p>"""
 
@@ -244,7 +253,7 @@ def upload_form():
     <form method="post" action="/upload" enctype="multipart/form-data">
       <p>Upload the subcontract PDF:
          <input type="file" name="pdf" accept="application/pdf"></p>
-      <button type="submit">Extract terms</button>
+      <button class="btn-primary" type="submit">Extract terms</button>
     </form>
     <p>&mdash; or &mdash; <a href="/confirm">Skip PDF: enter terms manually</a></p>
     <p><a href="/">Home</a></p>"""
@@ -341,7 +350,7 @@ def new_bill_form():
           Draft (review &amp; approve by hand)</label>
         <label><input type="radio" name="pay_now_status" value="AUTHORISED">
           Approve now</label></p>
-      <button type="submit">Create bills in Xero</button>
+      <button class="btn-primary" type="submit">Create bills in Xero</button>
     </form>
     <p><a href="/upload">Set contract terms from a PDF</a> &middot; <a href="/">Home</a></p>"""
 
@@ -511,7 +520,9 @@ def dashboard():
         )
 
     return (
-        f"<p class='stat'>Currently held: {_money_fmt(total_held)} across {jobs_held} job(s)</p>"
+        "<div class='page-head'><div><h1>Retention</h1>"
+        f"<p class='sub'>Currently held <b>{_money_fmt(total_held)}</b> across {jobs_held} job(s)</p></div>"
+        "<a class='btn btn-primary' href='/new-bill'>New bill</a></div>"
         "<div class='board'>"
         + column("Held", "held")
         + column("Released &mdash; awaiting payment", "released")

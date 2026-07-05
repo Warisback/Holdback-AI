@@ -15,10 +15,13 @@ DONE:
   "(retention 1/2)"/"(2/2)" or "(retention)". Fixtures T1/T2 + composition C1 locked.
 - STEP 3: /dashboard lifecycle from Xero status (DRAFT=Held, AUTHORISED=Released,
   PAID=Paid); "held £X across N jobs" = DRAFT tranches only.
-- STEP 5: static/holdback.css (design tokens, self-contained, no CDN/pico); site-wide
-  page shell + header via after_request; dashboard = 3-column Jira-style board (cards,
-  chips, tranche pills, Released/Paid greyed); money formatted £1,234.56 tabular; amber
-  low-confidence = 3px left-border + #FFF8E6.
+- STEP 5 + REDESIGN: static/holdback.css now uses the Claude editorial design language
+  (cream canvas, coral primary, serif display via Cormorant Garamond + Inter). App shell
+  is a Jira-style LEFT SIDEBAR (Dashboard/New bill/Contracts/Contacts) + content area,
+  wrapped site-wide via after_request. Dashboard = 3-column board (Held/Released/Paid)
+  with cards, chips, tranche pills, page-head + primary action. Home = clean overview
+  tiles (scopes moved to small diagnostics). Money £1,234.56 tabular; amber low-confidence
+  survives (3px left-border + tint). Fonts load from Google Fonts CDN with system fallbacks.
 
 TESTS: 46 passed, 0 skipped.
 
