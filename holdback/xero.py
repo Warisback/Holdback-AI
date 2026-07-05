@@ -25,14 +25,16 @@ from pathlib import Path
 
 import requests
 
+from .storage import data_dir
+
 # Xero identity + API endpoints (stable, not org-specific).
 AUTHORIZE_URL = "https://login.xero.com/identity/connect/authorize"
 TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 API_BASE = "https://api.xero.com/api.xro/2.0"
 
-# token_store.json sits at repo root, next to app.py. It is gitignored.
-TOKEN_STORE = Path(__file__).resolve().parent.parent / "token_store.json"
+# token_store.json: repo root locally, /tmp on Vercel (see holdback/storage.py). Gitignored.
+TOKEN_STORE = data_dir() / "token_store.json"
 
 
 # --- env accessors (read at call time so .env is loaded first) --------------

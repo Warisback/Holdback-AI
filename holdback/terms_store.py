@@ -7,9 +7,10 @@ these as defaults for the selected job; every field stays overridable at bill ti
 """
 
 import json
-from pathlib import Path
 
-STORE = Path(__file__).resolve().parent.parent / "terms_store.json"
+from .storage import data_dir
+
+STORE = data_dir() / "terms_store.json"  # repo root locally, /tmp on Vercel
 
 
 def load_all() -> dict:
