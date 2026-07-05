@@ -375,6 +375,7 @@ def new_bill_form():
     )
     today = datetime.date.today().isoformat()
     default_release = (datetime.date.today() + datetime.timedelta(days=180)).isoformat()
+    pay_due = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
     s = stored or {}
     retention_val = s.get("retention_pct") or "5"
     t1_pct = s.get("trigger1_pct") or "100"
@@ -399,9 +400,10 @@ def new_bill_form():
         <div class="field"><label>Labour (&pound;)</label><input name="labour" value="1000.00"></div>
         <div class="field"><label>Materials (&pound;)</label><input name="materials" value="500.00"></div>
       </div>
-      <div class="field-row two">
+      <div class="field-row three">
         <div class="field"><label>Retention (%)</label><input name="retention_pct" value="{retention_val}"></div>
         <div class="field"><label>Bill date</label><input name="date" value="{today}"></div>
+        <div class="field"><label>Pay-now due date</label><input name="pay_now_due_date" value="{pay_due}"></div>
       </div>
       <fieldset><legend>Release triggers</legend>
         <div class="field-row two">
@@ -461,6 +463,7 @@ def new_bill_create():
         materials_account_code=MATERIALS_ACCOUNT,
         vat_tax_type=VAT_TAX_TYPE,
         pay_now_status=f["pay_now_status"],
+        pay_now_due_date=f.get("pay_now_due_date", "").strip() or None,
         reference="HoldBack",
     )
     to_create = [payloads["pay_now"], *payloads["retention_bills"]]

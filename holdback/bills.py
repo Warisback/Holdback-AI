@@ -106,7 +106,7 @@ def build_accpay_bills(
         date=date,
         status=pay_now_status,
         line_items=_lines_for(split.pay_now, **codes),
-        due_date=pay_now_due_date,
+        due_date=pay_now_due_date or date,  # Xero requires a due date to approve a bill
         reference=f"{base_ref} (pay now)",
     )
 
