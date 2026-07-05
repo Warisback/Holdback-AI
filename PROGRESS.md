@@ -29,11 +29,15 @@ FEATURES (stand-out set, all wired + rendering):
 - CIS monthly return (/cis-return) grouped per subcontractor (labour/materials/CIS deducted)
   + CSV export; per-subbie Payment & Deduction Statement (/statement/<id>).
 - Release forecast (/forecast): pure-CSS bar chart of retention releasing over 12 months.
-- Reminders: "releasing in the next 30 days" banner on the dashboard.
+- Release reminders (/reminders): escalating drip (12/6/3/1 months before each release) —
+  drafts each email from the bill data, opens in the user's mail client via mailto (no mail
+  server). Timed auto-send = post-demo (needs provider + scheduler).
+- Fix: pay-now bill now always carries a DueDate (defaults to bill date) + a "Pay-now due
+  date" field on /new-bill — Xero rejects approval of a bill with no due date.
 - Xero deep links on every dashboard card ("Xero ↗").
 - Term risk flags on the confirm screen (deterministic: >5%/0% retention, missing trigger
   date, shares not summing to 100, trigger 2 condition w/o date).
-Sidebar nav now: Dashboard / New bill / Contracts / CIS return / Forecast / Contacts.
+Top-nav tabs: Dashboard / New bill / Contracts / CIS return / Forecast / Reminders / Contacts.
 
 TESTS: 46 passed, 0 skipped.
 

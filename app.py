@@ -11,11 +11,13 @@ Run:
 until the numbers are confirmed ("NUMBERS CONFIRMED") and the write module is built.
 """
 
+import calendar
 import datetime
 import json
 import os
 import re
 import secrets
+import urllib.parse
 from decimal import Decimal
 
 from dotenv import load_dotenv
@@ -71,7 +73,8 @@ def _page(body: str) -> str:
         "<span class='tag'>retention &amp; CIS for Xero</span></a><nav>"
         + nav("/dashboard", "Dashboard") + nav("/new-bill", "New bill")
         + nav("/upload", "Contracts") + nav("/cis-return", "CIS return")
-        + nav("/forecast", "Forecast") + nav("/contacts", "Contacts")
+        + nav("/forecast", "Forecast") + nav("/reminders", "Reminders")
+        + nav("/contacts", "Contacts")
         + "</nav>"
         f"<div class='org'><span class='dot'></span>{org or 'Not connected'}</div>"
         "</div></div>"
@@ -544,6 +547,7 @@ def _retention_items():
         items.append({
             "id": inv.get("InvoiceID"),
             "name": (inv.get("Contact") or {}).get("Name", "?"),
+            "contact_id": (inv.get("Contact") or {}).get("ContactID", ""),
             "held": inv.get("Total"),
             "due": _parse_xero_date(inv.get("DueDate")),
             "inv_no": inv.get("InvoiceNumber") or "",
@@ -816,6 +820,88 @@ def forecast():
         f"<p class='sub'><b>{_money_fmt(sum(totals))}</b> of retention scheduled to release over "
         "the next 12 months</p></div></div>"
         f"<div class='chart'>{bars}</div>{later_note}"
+    )
+
+
+# --- feature: escalating release-reminder drafts (12/6/3/1 months before release) -------
+_MONTHS_BEFORE = [12, 6, 3, 1]
+
+
+def _sub_months(d, n):
+    total = d.year * 12 + (d.month - 1) - n
+    y, m = divmod(total, 12)
+    m += 1
+    return datetime.date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def _mailto(email, subject, body):
+    q = urllib.parse.urlencode({"subject": subject, "body": body}, quote_via=urllib.parse.quote)
+    return f"mailto:{email or ''}?{q}"
+
+
+def _reminder_email(name, amount, tranche, org, due_str, n):
+    tr = f"tranche {tranche}" if tranche else "the retention"
+    close = f"\n\nBest regards,\n{org}"
+    if n >= 12:
+        return (f"Retention release scheduled — {amount} — {name}",
+                f"Hi {name},\n\nA note that {amount} of {tr} is scheduled for release on {due_str}. "
+                f"Nothing is needed from you yet — we'll be in touch nearer the date.{close}")
+    if n >= 6:
+        return (f"Retention release in ~6 months — {amount}",
+                f"Hi {name},\n\n{amount} of {tr} is due for release on {due_str}, about six months "
+                f"away. Please let us know if your payment or contact details have changed.{close}")
+    if n >= 3:
+        return (f"Retention release approaching — {amount} — due {due_str}",
+                f"Hi {name},\n\n{amount} of {tr} is due for release on {due_str}. We'll process it "
+                f"on or shortly after that date — please confirm your details are current.{close}")
+    return (f"Retention due for release next month — {amount}",
+            f"Hi {name},\n\n{amount} of {tr} is due for release on {due_str}. We're preparing to "
+            f"release it — please confirm your bank details so payment isn't delayed.{close}")
+
+
+@app.route("/reminders")
+def reminders():
+    """Escalating release-reminder drafts for each held retention bill. Drafts open in the
+    user's mail client via mailto (no email server) — timed auto-send is a post-demo add-on."""
+    org = _org_name() or "HoldBack"
+    emails = {c.get("ContactID"): (c.get("EmailAddress") or "")
+              for c in xero.get_contacts().get("Contacts", [])}
+    today = datetime.date.today()
+    held = sorted((i for i in _retention_items() if i["lane"] == "held" and i["due"]),
+                  key=lambda i: i["due"])
+    rows = ""
+    for i in held:
+        due_str = i["due"].strftime("%d %b %Y")
+        sched = [(n, _sub_months(i["due"], n)) for n in _MONTHS_BEFORE]
+        due_ns = [n for n, sd in sched if sd <= today]
+        current = min(due_ns) if due_ns else _MONTHS_BEFORE[0]
+        chips = "".join(
+            f"<span class='rem-chip{' due' if (n == current and due_ns) else ''}'>"
+            f"{n}mo &middot; {sd.strftime('%d %b %y')}</span>" for n, sd in sched)
+        subj, body = _reminder_email(i["name"], _money_fmt(i["held"]), i["tranche"], org, due_str, current)
+        state = ("<span class='rem-chip due'>reminder due now</span>" if due_ns
+                 else f"<span class='rem-chip'>first reminder {sched[0][1].strftime('%d %b %y')}</span>")
+        sub = f"releases {due_str}" + (f" &middot; tranche {i['tranche']}" if i["tranche"] else "")
+        rows += (
+            f"<article class='card'><div class='card-top'><div style='min-width:0'>"
+            f"<div class='card-name'>{i['name']}</div><div class='card-sub'>{sub}</div></div>"
+            f"<div class='card-amt'>{_money_fmt(i['held'])}</div></div>"
+            f"<div class='rem-sched'>{chips}</div>"
+            f"<div class='card-meta'>{state}"
+            f"<a class='btn btn-primary' style='margin-left:auto;padding:6px 14px' "
+            f"href=\"{_mailto(emails.get(i.get('contact_id'), ''), subj, body)}\">"
+            "Draft reminder email</a></div></article>"
+        )
+    rows = rows or "<div class='empty'>No held retention to remind on yet.</div>"
+    return (
+        "<div class='page-head'><div><h1>Release reminders</h1>"
+        "<p class='sub'>An escalating cadence &mdash; 12, 6, 3 and 1 month before each release "
+        "&mdash; so retention never slips. HoldBack drafts each email; click to open it in your "
+        "mail app.</p></div></div>"
+        f"{rows}"
+        "<p class='hint' style='margin-top:14px'>Drafts open in your email client (no mail server "
+        "needed). Automatic timed sending would need an email provider + a scheduler &mdash; a "
+        "post-demo add-on.</p>"
     )
 
 

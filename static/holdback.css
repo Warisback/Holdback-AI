@@ -145,6 +145,10 @@ table form { margin:0; }
 .reminder { background:#EBF2FE; border:1px solid #C7DBF8; border-radius:var(--r); padding:12px 16px; margin-bottom:16px; }
 .reminder-h { font-weight:600; color:#0A4DB3; font-size:13px; margin-bottom:6px; }
 .reminder li { font-size:12.5px; color:var(--muted); margin:2px 0; }
+.rem-sched { display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 2px; }
+.rem-chip { font:11px var(--mono); color:var(--muted); background:var(--colbg);
+            border:1px solid var(--line); border-radius:4px; padding:2px 8px; }
+.rem-chip.due { background:var(--rel-bg); color:var(--rel-fg); border-color:#BBD3FB; font-weight:600; }
 
 /* ---- forecast bar chart ---- */
 .chart { display:flex; align-items:flex-end; gap:10px; min-height:224px; padding:16px 16px 0;
